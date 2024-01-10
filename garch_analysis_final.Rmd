@@ -1,0 +1,807 @@
+---
+title: "ISYE 6402 Project ARMA GARCH Analysis for Log Price"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include = FALSE}
+
+# Set up the default parameters
+# 1. The code block will be shown in the document
+# 2. set up figure display size
+# 3. turn off all the warnings and messages
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width = 8, fig.height = 4)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+**Date:** The date during which each data point was recorded
+
+**BTC:** Closing stock price for Bitcoin
+
+**BNB:** Closing stock price for Binance Coin
+
+**ETH:** Closing stock price for Ether
+
+**XRP:** Closing stock price for XRP
+
+**DOGE:** Closing stock price for Dogecoin
+
+
+
+```{r library}
+library(zoo)
+library(lubridate)
+library(mgcv)
+library(TSA)
+library(xts)
+library(vars)
+library(rugarch)
+library(aod)
+library(car)
+```
+
+# Instructions on reading the data
+
+To read the data in `R`, save the file in your working directory (make sure you have changed the directory if different from the R working directory) and read the data using the `R` function `read.csv()`
+
+```{r}
+#Read in data
+#create data frame with 0 rows and 3 columns
+data <- data.frame(matrix(ncol = 6, nrow = 1240))
+#provide column names
+colnames(data) <- c('Date','BTC', 'BNB', 'ETH','XRP','DOGE')
+data[,1] <-read.csv("BTC.csv", head = TRUE)$Date
+data[,2] <-read.csv("BTC.csv", head = TRUE)$Close
+data[,3] <-read.csv("BNB.csv", head = TRUE)$Close
+data[,4] <-read.csv("ETH.csv", head = TRUE)$Close
+data[,5] <-read.csv("XRP.csv", head = TRUE)$Close
+data[,6] <-read.csv("DOGE.csv", head = TRUE)$Close
+for (i in 2:6){
+  data[,i] <- log(data[,i])
+}
+data$Date<-as.Date(data$Date)
+data.train<-data[1:(nrow(data)-14),]
+data.test<-data[(nrow(data)-13):nrow(data),]
+```
+
+# Part1: Exploratory Data Analysis
+
+```{r}
+#Convert stock data to Time Series
+btc.ts<-ts(data$BTC)
+bnb.ts<-ts(data$BNB)
+eth.ts<-ts(data$ETH)
+xrp.ts<-ts(data$XRP)
+doge.ts<-ts(data$DOGE)
+btc.ts.train<-ts(data.train$BTC)
+bnb.ts.train<-ts(data.train$BNB)
+eth.ts.train<-ts(data.train$ETH)
+xrp.ts.train<-ts(data.train$XRP)
+doge.ts.train<-ts(data.train$DOGE)
+btc.ts.test<-ts(data.test$BTC)
+bnb.ts.test<-ts(data.test$BNB)
+eth.ts.test<-ts(data.test$ETH)
+xrp.ts.test<-ts(data.test$XRP)
+doge.ts.test<-ts(data.test$DOGE)
+#Initialize plot colors
+btc.col<-"#FF8C00"
+bnb.col<-"#008000"
+eth.col<-"#20B2AA"
+xrp.col<-"#1E90FF"
+doge.col<-"#9932CC"
+#Plot each Time Series
+plot(ts(data[,2:6]),  main = "Price")
+plot(data$Date,btc.ts,main="BTC",xlab="Time",ylab="Price",col=btc.col,type = "l")
+plot(data$Date,bnb.ts,main="BNB",xlab="Time",ylab="Price",col=bnb.col,type = "l")
+plot(data$Date,eth.ts,main="ETH",xlab="Time",ylab="Price",col=eth.col,type = "l")
+plot(data$Date,xrp.ts,main="XRP",xlab="Time",ylab="Price",col=xrp.col,type = "l")
+plot(data$Date,doge.ts,main="DOGE",xlab="Time",ylab="Price",col=doge.col,type = "l")
+```
+
+
+# Part 2: ARMA GARCH Modeling
+
+** BTC **
+
+```{r}
+# Final model for BTC
+spec.btc = ugarchspec(variance.model=list(garchOrder=c(1,1)),
+                      mean.model=list(armaOrder=c(1,1),
+                                      include.mean=T),
+                      distribution.model="std")
+fit.btc = ugarchfit(spec.btc, btc.ts.train, solver = 'hybrid')
+# Final model for BTC
+spec.btc1 = ugarchspec(variance.model=list(garchOrder=c(1,1)),
+                      mean.model=list(armaOrder=c(1,1),
+                      arfima=T),
+                      fixed.pars=list(arfima=1),
+                      distribution.model="std")
+fit.btc1 = ugarchfit(spec.btc1, btc.ts.train, solver = 'hybrid')
+```
+
+** BNB **
+```{r}
+# Final model for BNB
+spec.bnb = ugarchspec(variance.model=list(garchOrder=c(1,1)),
+                      mean.model=list(armaOrder=c(1,1),
+                                      include.mean=T),
+                      distribution.model="std")
+fit.bnb = ugarchfit(spec.bnb, bnb.ts.train, solver = 'hybrid')
+# Final model for BTC
+spec.bnb1 = ugarchspec(variance.model=list(garchOrder=c(1,1)),
+                      mean.model=list(armaOrder=c(1,1),
+                      arfima=T),
+                      fixed.pars=list(arfima=1),
+                      distribution.model="std")
+fit.bnb1 = ugarchfit(spec.bnb1, bnb.ts.train, solver = 'hybrid')
+```
+** ETH **
+```{r}
+# Final model for ETH
+spec.eth = ugarchspec(variance.model=list(garchOrder=c(1,1)),
+                      mean.model=list(armaOrder=c(1,1),
+                                      include.mean=T),
+                      distribution.model="std")
+fit.eth = ugarchfit(spec.eth, eth.ts.train, solver = 'hybrid')
+# Final model for BTC
+spec.eth1 = ugarchspec(variance.model=list(garchOrder=c(1,1)),
+                      mean.model=list(armaOrder=c(1,1),
+                      arfima=T),
+                      fixed.pars=list(arfima=1),
+                      distribution.model="std")
+fit.eth1 = ugarchfit(spec.eth1, eth.ts.train, solver = 'hybrid')
+```
+
+** XRP **
+```{r}
+# Final model for XRP
+spec.xrp = ugarchspec(variance.model=list(garchOrder=c(1,1)),
+                      mean.model=list(armaOrder=c(1,1),
+                                      include.mean=T),
+                      distribution.model="std")
+fit.xrp = ugarchfit(spec.xrp, xrp.ts.train, solver = 'hybrid')
+# Final model for BTC
+spec.xrp1 = ugarchspec(variance.model=list(garchOrder=c(1,1)),
+                      mean.model=list(armaOrder=c(1,1),
+                      arfima=T),
+                      fixed.pars=list(arfima=1),
+                      distribution.model="std")
+fit.xrp1 = ugarchfit(spec.xrp1, xrp.ts.train, solver = 'hybrid')
+```
+
+** DOGE **
+```{r}
+# Final model for DOGE
+spec.doge = ugarchspec(variance.model=list(garchOrder=c(1,1)),
+                      mean.model=list(armaOrder=c(1,1),
+                                      include.mean=T),
+                      distribution.model="std")
+fit.doge = ugarchfit(spec.doge, doge.ts.train, solver = 'hybrid')
+# Final model for BTC
+spec.doge1 = ugarchspec(variance.model=list(garchOrder=c(1,1)),
+                      mean.model=list(armaOrder=c(1,1),
+                      arfima=T),
+                      fixed.pars=list(arfima=1),
+                      distribution.model="std")
+fit.doge1 = ugarchfit(spec.doge1, doge.ts.train, solver = 'hybrid')
+```
+
+** Model Summary ***
+```{r}
+fit.btc
+```
+```{r}
+fit.btc1
+```
+```{r}
+fit.bnb
+```
+```{r}
+fit.bnb1
+```
+```{r}
+fit.eth
+```
+```{r}
+fit.eth1
+```
+```{r}
+fit.xrp
+```
+```{r}
+fit.xrp1
+```
+```{r}
+fit.doge
+```
+```{r}
+fit.doge1
+```
+
+```{r}
+layout(mat = matrix(c(1,1,2,2,3,3,
+                      0,4,4,5,5,0), nrow = 2, byrow = TRUE))
+ts.plot(btc.ts.train,ylab="Log Price",col="black")
+lines(fit.btc@fit$fitted.values,col=btc.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",btc.col),cex=0.7)
+ts.plot(bnb.ts.train,ylab="Log Price",col="black")
+lines(fit.bnb@fit$fitted.values,col=bnb.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",bnb.col),cex=0.7)
+ts.plot(eth.ts.train,ylab="Log Price",col="black")
+lines(fit.eth@fit$fitted.values,col=eth.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",eth.col),cex=0.7)
+ts.plot(xrp.ts.train,ylab="Log Price",col="black")
+lines(fit.xrp@fit$fitted.values,col=xrp.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",xrp.col),cex=0.7)
+ts.plot(doge.ts.train,ylab="Log Price",col="black")
+lines(fit.doge@fit$fitted.values,col=doge.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",doge.col),cex=0.7)
+```
+
+```{r}
+layout(mat = matrix(c(1,1,2,2,3,3,
+                      0,4,4,5,5,0), nrow = 2, byrow = TRUE))
+ts.plot(btc.ts.train,ylab="Log Price",col="black")
+lines(fit.btc1@fit$fitted.values,col=btc.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",btc.col),cex=0.7)
+ts.plot(bnb.ts.train,ylab="Log Price",col="black")
+lines(fit.bnb1@fit$fitted.values,col=bnb.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",bnb.col),cex=0.7)
+ts.plot(eth.ts.train,ylab="Log Price",col="black")
+lines(fit.eth1@fit$fitted.values,col=eth.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",eth.col),cex=0.7)
+ts.plot(xrp.ts.train,ylab="Log Price",col="black")
+lines(fit.xrp1@fit$fitted.values,col=xrp.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",xrp.col),cex=0.7)
+ts.plot(doge.ts.train,ylab="Log Price",col="black")
+lines(fit.doge1@fit$fitted.values,col=doge.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",doge.col),cex=0.7)
+```
+
+
+
+** Residuals **
+
+```{r}
+#qqPlot(x=ugarcg.resid,distribution="t",df=4.797230)
+par(mfrow=c(2,2))
+ts.plot(residuals(fit.btc), main = "Residuals")
+ts.plot(ts(fit.btc@fit$z), main = "Standardized Residuals")
+acf(as.numeric(residuals(fit.btc)), main = "ACF of residuals")
+acf(as.numeric(residuals(fit.btc)^2), main = "ACF of squared residuals")
+acf(as.numeric(fit.btc@fit$z), main = "ACF of Standardized residuals")
+acf(as.numeric(fit.btc@fit$z^2), main = "ACF of Standardized squared residuals")
+```
+```{r}
+qqPlot(x=fit.btc@fit$z,distribution="t",df=tail(fit.btc@fit$coef,1))
+```
+```{r}
+#qqPlot(x=ugarcg.resid,distribution="t",df=4.797230)
+par(mfrow=c(2,2))
+ts.plot(residuals(fit.btc1), main = "Residuals")
+ts.plot(ts(fit.btc1@fit$z), main = "Standardized Residuals")
+acf(as.numeric(residuals(fit.btc1)), main = "ACF of residuals")
+acf(as.numeric(residuals(fit.btc1)^2), main = "ACF of squared residuals")
+acf(as.numeric(fit.btc1@fit$z), main = "ACF of Standardized residuals")
+acf(as.numeric(fit.btc1@fit$z^2), main = "ACF of Standardized squared residuals")
+```
+```{r}
+qqPlot(x=fit.btc1@fit$z,distribution="t",df=tail(fit.btc1@fit$coef,1))
+```
+```{r}
+par(mfrow=c(2,2))
+ts.plot(residuals(fit.bnb), main = "Residuals")
+ts.plot(ts(fit.bnb@fit$z), main = "Standardized Residuals")
+acf(as.numeric(residuals(fit.bnb)), main = "ACF of residuals")
+acf(as.numeric(residuals(fit.bnb)^2), main = "ACF of squared residuals")
+acf(as.numeric(fit.bnb@fit$z), main = "ACF of Standardized residuals")
+acf(as.numeric(fit.bnb@fit$z^2), main = "ACF of Standardized squared residuals")
+```
+```{r}
+qqPlot(x=fit.bnb@fit$z,distribution="t",df=tail(fit.bnb@fit$coef,1))
+```
+```{r}
+par(mfrow=c(2,2))
+ts.plot(residuals(fit.bnb1), main = "Residuals")
+ts.plot(ts(fit.bnb1@fit$z), main = "Standardized Residuals")
+acf(as.numeric(residuals(fit.bnb1)), main = "ACF of residuals")
+acf(as.numeric(residuals(fit.bnb1)^2), main = "ACF of squared residuals")
+acf(as.numeric(fit.bnb1@fit$z), main = "ACF of Standardized residuals")
+acf(as.numeric(fit.bnb1@fit$z^2), main = "ACF of Standardized squared residuals")
+```
+```{r}
+qqPlot(x=fit.bnb1@fit$z,distribution="t",df=tail(fit.bnb1@fit$coef,1))
+```
+```{r}
+par(mfrow=c(2,2))
+ts.plot(residuals(fit.eth), main = "Residuals")
+ts.plot(ts(fit.eth@fit$z), main = "Standardized Residuals")
+acf(as.numeric(residuals(fit.eth)), main = "ACF of residuals")
+acf(as.numeric(residuals(fit.eth)^2), main = "ACF of squared residuals")
+acf(as.numeric(fit.eth@fit$z), main = "ACF of Standardized residuals")
+acf(as.numeric(fit.eth@fit$z^2), main = "ACF of Standardized squared residuals")
+```
+```{r}
+qqPlot(x=fit.eth@fit$z,distribution="t",df=tail(fit.eth@fit$coef,1))
+```
+```{r}
+par(mfrow=c(2,2))
+ts.plot(residuals(fit.eth1), main = "Residuals")
+ts.plot(ts(fit.eth1@fit$z), main = "Standardized Residuals")
+acf(as.numeric(residuals(fit.eth1)), main = "ACF of residuals")
+acf(as.numeric(residuals(fit.eth1)^2), main = "ACF of squared residuals")
+acf(as.numeric(fit.eth1@fit$z), main = "ACF of Standardized residuals")
+acf(as.numeric(fit.eth1@fit$z^2), main = "ACF of Standardized squared residuals")
+```
+```{r}
+qqPlot(x=fit.eth1@fit$z,distribution="t",df=tail(fit.eth1@fit$coef,1))
+```
+```{r}
+par(mfrow=c(2,2))
+ts.plot(residuals(fit.xrp), main = "Residuals")
+ts.plot(ts(fit.xrp@fit$z), main = "Standardized Residuals")
+acf(as.numeric(residuals(fit.xrp)), main = "ACF of residuals")
+acf(as.numeric(residuals(fit.xrp)^2), main = "ACF of squared residuals")
+acf(as.numeric(fit.xrp@fit$z), main = "ACF of Standardized residuals")
+acf(as.numeric(fit.xrp@fit$z^2), main = "ACF of Standardized squared residuals")
+```
+```{r}
+qqPlot(x=fit.xrp@fit$z,distribution="t",df=tail(fit.xrp@fit$coef,1))
+```
+```{r}
+par(mfrow=c(2,2))
+ts.plot(residuals(fit.xrp1), main = "Residuals")
+ts.plot(ts(fit.xrp1@fit$z), main = "Standardized Residuals")
+acf(as.numeric(residuals(fit.xrp1)), main = "ACF of residuals")
+acf(as.numeric(residuals(fit.xrp1)^2), main = "ACF of squared residuals")
+acf(as.numeric(fit.xrp1@fit$z), main = "ACF of Standardized residuals")
+acf(as.numeric(fit.xrp1@fit$z^2), main = "ACF of Standardized squared residuals")
+```
+```{r}
+qqPlot(x=fit.xrp1@fit$z,distribution="t",df=tail(fit.xrp1@fit$coef,1))
+```
+```{r}
+par(mfrow=c(2,2))
+ts.plot(residuals(fit.doge), main = "Residuals")
+ts.plot(ts(fit.doge@fit$z), main = "Standardized Residuals")
+acf(as.numeric(residuals(fit.doge)), main = "ACF of residuals")
+acf(as.numeric(residuals(fit.doge)^2), main = "ACF of squared residuals")
+acf(as.numeric(fit.doge@fit$z), main = "ACF of Standardized residuals")
+acf(as.numeric(fit.doge@fit$z^2), main = "ACF of Standardized squared residuals")
+```
+```{r}
+qqPlot(x=fit.doge@fit$z,distribution="t",df=tail(fit.doge@fit$coef,1))
+```
+```{r}
+par(mfrow=c(2,2))
+ts.plot(residuals(fit.doge1), main = "Residuals")
+ts.plot(ts(fit.doge1@fit$z), main = "Standardized Residuals")
+acf(as.numeric(residuals(fit.doge1)), main = "ACF of residuals")
+acf(as.numeric(residuals(fit.doge1)^2), main = "ACF of squared residuals")
+acf(as.numeric(fit.doge1@fit$z), main = "ACF of Standardized residuals")
+acf(as.numeric(fit.doge1@fit$z^2), main = "ACF of Standardized squared residuals")
+```
+```{r}
+qqPlot(x=fit.doge1@fit$z,distribution="t",df=tail(fit.doge1@fit$coef,1))
+```
+
+*** ARMA-GARCH nahead prediction ***
+```{r}
+nfore <- length(data.test[,1])
+l <- length(btc.ts)
+fore.btc = ugarchforecast(fit.btc,n.ahead=14,ci=0.95)
+fore.bnb = ugarchforecast(fit.bnb,n.ahead=14,ci=0.95)
+fore.eth = ugarchforecast(fit.eth,n.ahead=14,ci=0.95)
+fore.xrp = ugarchforecast(fit.xrp,n.ahead=14,ci=0.95)
+fore.doge = ugarchforecast(fit.doge,n.ahead=14,ci=0.95)
+armagarch.cnt.btc = fore.btc@forecast$seriesFor[1:14]
+armagarch.cnt.btc.ts = ts(armagarch.cnt.btc,start=1)
+lo.armagarch.cnt.btc = ts(armagarch.cnt.btc-1.96*fore.btc@forecast$sigmaFor,start=1)
+up.armagarch.cnt.btc = ts(armagarch.cnt.btc+1.96*fore.btc@forecast$sigmaFor,start=1)
+armagarch.cnt.bnb = fore.bnb@forecast$seriesFor[1:14]
+armagarch.cnt.bnb.ts = ts(armagarch.cnt.bnb,start=1)
+lo.armagarch.cnt.bnb = ts(armagarch.cnt.bnb-1.96*fore.bnb@forecast$sigmaFor,start=1)
+up.armagarch.cnt.bnb = ts(armagarch.cnt.bnb+1.96*fore.bnb@forecast$sigmaFor,start=1)
+armagarch.cnt.eth = fore.eth@forecast$seriesFor[1:14]
+armagarch.cnt.eth.ts = ts(armagarch.cnt.eth,start=1)
+lo.armagarch.cnt.eth = ts(armagarch.cnt.eth-1.96*fore.eth@forecast$sigmaFor,start=1)
+up.armagarch.cnt.eth = ts(armagarch.cnt.eth+1.96*fore.eth@forecast$sigmaFor,start=1)
+armagarch.cnt.xrp = fore.xrp@forecast$seriesFor[1:14]
+armagarch.cnt.xrp.ts = ts(armagarch.cnt.xrp,start=1)
+lo.armagarch.cnt.xrp = ts(armagarch.cnt.xrp-1.96*fore.xrp@forecast$sigmaFor,start=1)
+up.armagarch.cnt.xrp = ts(armagarch.cnt.xrp+1.96*fore.xrp@forecast$sigmaFor,start=1)
+armagarch.cnt.doge = fore.doge@forecast$seriesFor[1:14]
+armagarch.cnt.doge.ts = ts(armagarch.cnt.doge,start=1)
+lo.armagarch.cnt.doge = ts(armagarch.cnt.doge-1.96*fore.doge@forecast$sigmaFor,start=1)
+up.armagarch.cnt.doge = ts(armagarch.cnt.doge+1.96*fore.doge@forecast$sigmaFor,start=1)
+```
+```{r}
+layout(mat = matrix(c(1,1,2,2,3,3,
+                      0,4,4,5,5,0), nrow = 2, byrow = TRUE))
+ymin=min(btc.ts.test,armagarch.cnt.btc.ts,lo.armagarch.cnt.btc,up.armagarch.cnt.btc)
+ymax=max(btc.ts.test,armagarch.cnt.btc.ts,lo.armagarch.cnt.btc,up.armagarch.cnt.btc)
+plot(ts(btc.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="BTC ARMA-GARCH Predictions")
+points(armagarch.cnt.btc.ts,lwd=2,col=btc.col)
+lines(lo.armagarch.cnt.btc,lty=3,lwd= 2, col=btc.col)
+lines(up.armagarch.cnt.btc,lty=3,lwd= 2, col=btc.col)
+ymin=min(bnb.ts.test,armagarch.cnt.bnb.ts,lo.armagarch.cnt.bnb,up.armagarch.cnt.bnb)
+ymax=max(bnb.ts.test,armagarch.cnt.bnb.ts,lo.armagarch.cnt.bnb,up.armagarch.cnt.bnb)
+plot(ts(bnb.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="BNB ARMA-GARCH Predictions")
+points(armagarch.cnt.bnb.ts,lwd=2,col=bnb.col)
+lines(lo.armagarch.cnt.bnb,lty=3,lwd= 2, col=bnb.col)
+lines(up.armagarch.cnt.bnb,lty=3,lwd= 2, col=bnb.col)
+ymin=min(eth.ts.test,armagarch.cnt.eth.ts,lo.armagarch.cnt.eth,up.armagarch.cnt.eth)
+ymax=max(eth.ts.test,armagarch.cnt.eth.ts,lo.armagarch.cnt.eth,up.armagarch.cnt.eth)
+plot(ts(eth.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="ETH ARMA-GARCH Predictions")
+points(armagarch.cnt.eth.ts,lwd=2,col=eth.col)
+lines(lo.armagarch.cnt.eth,lty=3,lwd= 2, col=eth.col)
+lines(up.armagarch.cnt.eth,lty=3,lwd= 2, col=eth.col)
+ymin=min(xrp.ts.test,armagarch.cnt.xrp.ts,lo.armagarch.cnt.xrp,up.armagarch.cnt.xrp)
+ymax=max(xrp.ts.test,armagarch.cnt.xrp.ts,lo.armagarch.cnt.xrp,up.armagarch.cnt.xrp)
+plot(ts(xrp.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="XRP ARMA-GARCH Predictions")
+points(armagarch.cnt.xrp.ts,lwd=2,col=xrp.col)
+lines(lo.armagarch.cnt.xrp,lty=3,lwd= 2, col=xrp.col)
+lines(up.armagarch.cnt.xrp,lty=3,lwd= 2, col=xrp.col)
+ymin=min(doge.ts.test,armagarch.cnt.doge.ts,lo.armagarch.cnt.doge,up.armagarch.cnt.doge)
+ymax=max(doge.ts.test,armagarch.cnt.doge.ts,lo.armagarch.cnt.doge,up.armagarch.cnt.doge)
+plot(ts(doge.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="DOGE ARMA-GARCH Predictions")
+points(armagarch.cnt.doge.ts,lwd=2,col=doge.col)
+lines(lo.armagarch.cnt.doge,lty=3,lwd= 2, col=doge.col)
+lines(up.armagarch.cnt.doge,lty=3,lwd= 2, col=doge.col)
+```
+```{r}
+cat("BTC ARMA-GARCH MAE:",mean(abs(armagarch.cnt.btc-btc.ts.test)),"\nBTC ARMA-GARCH PM:",
+sum((armagarch.cnt.btc-btc.ts.test)^2)/sum((btc.ts.test-mean(btc.ts.test))^2))
+```
+```{r}
+cat("BNB ARMA-GARCH MAE:",mean(abs(armagarch.cnt.bnb-bnb.ts.test)),"\nBNB ARMA-GARCH PM:",
+sum((armagarch.cnt.bnb-bnb.ts.test)^2)/sum((bnb.ts.test-mean(bnb.ts.test))^2))
+```
+```{r}
+cat("ETH ARMA-GARCH MAE:",mean(abs(armagarch.cnt.eth-eth.ts.test)),"\nETH ARMA GARCH PM:",
+sum((armagarch.cnt.eth-eth.ts.test)^2)/sum((eth.ts.test-mean(eth.ts.test))^2))
+```
+
+```{r}
+cat("XRP ARMA-GARCH MAE:",mean(abs(armagarch.cnt.xrp-xrp.ts.test)),"\nXRP ARMA-GARCH PM:",
+sum((armagarch.cnt.xrp-xrp.ts.test)^2)/sum((xrp.ts.test-mean(xrp.ts.test))^2))
+```
+```{r}
+cat("DOGE ARMA-GARCH MAE:",mean(abs(armagarch.cnt.doge-doge.ts.test)),"\nDOGE ARMA-GARCH PM:",
+sum((armagarch.cnt.doge-doge.ts.test)^2)/sum((doge.ts.test-mean(doge.ts.test))^2))
+```
+
+*** ARIMA-GARCH nahead predictions ***
+```{r}
+nfore <- length(data.test[,1])
+l <- length(btc.ts)
+fore.btc = ugarchforecast(fit.btc1,n.ahead=14,ci=0.95)
+fore.bnb = ugarchforecast(fit.bnb1,n.ahead=14,ci=0.95)
+fore.eth = ugarchforecast(fit.eth1,n.ahead=14,ci=0.95)
+fore.xrp = ugarchforecast(fit.xrp1,n.ahead=14,ci=0.95)
+fore.doge = ugarchforecast(fit.doge1,n.ahead=14,ci=0.95)
+armagarch.cnt.btc = fore.btc@forecast$seriesFor[1:14]
+armagarch.cnt.btc.ts = ts(armagarch.cnt.btc,start=1)
+lo.armagarch.cnt.btc = ts(armagarch.cnt.btc-1.96*fore.btc@forecast$sigmaFor,start=1)
+up.armagarch.cnt.btc = ts(armagarch.cnt.btc+1.96*fore.btc@forecast$sigmaFor,start=1)
+armagarch.cnt.bnb = fore.bnb@forecast$seriesFor[1:14]
+armagarch.cnt.bnb.ts = ts(armagarch.cnt.bnb,start=1)
+lo.armagarch.cnt.bnb = ts(armagarch.cnt.bnb-1.96*fore.bnb@forecast$sigmaFor,start=1)
+up.armagarch.cnt.bnb = ts(armagarch.cnt.bnb+1.96*fore.bnb@forecast$sigmaFor,start=1)
+armagarch.cnt.eth = fore.eth@forecast$seriesFor[1:14]
+armagarch.cnt.eth.ts = ts(armagarch.cnt.eth,start=1)
+lo.armagarch.cnt.eth = ts(armagarch.cnt.eth-1.96*fore.eth@forecast$sigmaFor,start=1)
+up.armagarch.cnt.eth = ts(armagarch.cnt.eth+1.96*fore.eth@forecast$sigmaFor,start=1)
+armagarch.cnt.xrp = fore.xrp@forecast$seriesFor[1:14]
+armagarch.cnt.xrp.ts = ts(armagarch.cnt.xrp,start=1)
+lo.armagarch.cnt.xrp = ts(armagarch.cnt.xrp-1.96*fore.xrp@forecast$sigmaFor,start=1)
+up.armagarch.cnt.xrp = ts(armagarch.cnt.xrp+1.96*fore.xrp@forecast$sigmaFor,start=1)
+armagarch.cnt.doge = fore.doge@forecast$seriesFor[1:14]
+armagarch.cnt.doge.ts = ts(armagarch.cnt.doge,start=1)
+lo.armagarch.cnt.doge = ts(armagarch.cnt.doge-1.96*fore.doge@forecast$sigmaFor,start=1)
+up.armagarch.cnt.doge = ts(armagarch.cnt.doge+1.96*fore.doge@forecast$sigmaFor,start=1)
+```
+```{r}
+layout(mat = matrix(c(1,1,2,2,3,3,
+                      0,4,4,5,5,0), nrow = 2, byrow = TRUE))
+ymin=min(btc.ts.test,armagarch.cnt.btc.ts,lo.armagarch.cnt.btc,up.armagarch.cnt.btc)
+ymax=max(btc.ts.test,armagarch.cnt.btc.ts,lo.armagarch.cnt.btc,up.armagarch.cnt.btc)
+plot(ts(btc.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="BTC ARIMA-GARCH Predictions")
+points(armagarch.cnt.btc.ts,lwd=2,col=btc.col)
+lines(lo.armagarch.cnt.btc,lty=3,lwd= 2, col=btc.col)
+lines(up.armagarch.cnt.btc,lty=3,lwd= 2, col=btc.col)
+ymin=min(bnb.ts.test,armagarch.cnt.bnb.ts,lo.armagarch.cnt.bnb,up.armagarch.cnt.bnb)
+ymax=max(bnb.ts.test,armagarch.cnt.bnb.ts,lo.armagarch.cnt.bnb,up.armagarch.cnt.bnb)
+plot(ts(bnb.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="BNB ARIMA-GARCH Predictions")
+points(armagarch.cnt.bnb.ts,lwd=2,col=bnb.col)
+lines(lo.armagarch.cnt.bnb,lty=3,lwd= 2, col=bnb.col)
+lines(up.armagarch.cnt.bnb,lty=3,lwd= 2, col=bnb.col)
+ymin=min(eth.ts.test,armagarch.cnt.eth.ts,lo.armagarch.cnt.eth,up.armagarch.cnt.eth)
+ymax=max(eth.ts.test,armagarch.cnt.eth.ts,lo.armagarch.cnt.eth,up.armagarch.cnt.eth)
+plot(ts(eth.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="ETH ARIMA-GARCH Predictions")
+points(armagarch.cnt.eth.ts,lwd=2,col=eth.col)
+lines(lo.armagarch.cnt.eth,lty=3,lwd= 2, col=eth.col)
+lines(up.armagarch.cnt.eth,lty=3,lwd= 2, col=eth.col)
+ymin=min(xrp.ts.test,armagarch.cnt.xrp.ts,lo.armagarch.cnt.xrp,up.armagarch.cnt.xrp)
+ymax=max(xrp.ts.test,armagarch.cnt.xrp.ts,lo.armagarch.cnt.xrp,up.armagarch.cnt.xrp)
+plot(ts(xrp.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="XRP ARIMA-GARCH Predictions")
+points(armagarch.cnt.xrp.ts,lwd=2,col=xrp.col)
+lines(lo.armagarch.cnt.xrp,lty=3,lwd= 2, col=xrp.col)
+lines(up.armagarch.cnt.xrp,lty=3,lwd= 2, col=xrp.col)
+ymin=min(doge.ts.test,armagarch.cnt.doge.ts,lo.armagarch.cnt.doge,up.armagarch.cnt.doge)
+ymax=max(doge.ts.test,armagarch.cnt.doge.ts,lo.armagarch.cnt.doge,up.armagarch.cnt.doge)
+plot(ts(doge.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="DOGE ARIMA-GARCH Predictions")
+points(armagarch.cnt.doge.ts,lwd=2,col=doge.col)
+lines(lo.armagarch.cnt.doge,lty=3,lwd= 2, col=doge.col)
+lines(up.armagarch.cnt.doge,lty=3,lwd= 2, col=doge.col)
+```
+```{r}
+cat("BTC ARIMA GARCH MAE:",mean(abs(armagarch.cnt.btc-btc.ts.test)),"\nBTC ARIMA GARCH PM:",
+sum((armagarch.cnt.btc-btc.ts.test)^2)/sum((btc.ts.test-mean(btc.ts.test))^2))
+```
+```{r}
+cat("BNB ARIMA GARCH MAE:",mean(abs(armagarch.cnt.bnb-bnb.ts.test)),"\nBNB ARIMA GARCH PM:",
+sum((armagarch.cnt.bnb-bnb.ts.test)^2)/sum((bnb.ts.test-mean(bnb.ts.test))^2))
+```
+```{r}
+cat("ETH ARIMA GARCH MAE:",mean(abs(armagarch.cnt.eth-eth.ts.test)),"\nETH ARIMA GARCH PM:",
+sum((armagarch.cnt.eth-eth.ts.test)^2)/sum((eth.ts.test-mean(eth.ts.test))^2))
+```
+
+```{r}
+cat("XRP ARIMA GARCH MAE:",mean(abs(armagarch.cnt.xrp-xrp.ts.test)),"\nXRP ARIMA GARCH PM:",
+sum((armagarch.cnt.xrp-xrp.ts.test)^2)/sum((xrp.ts.test-mean(xrp.ts.test))^2))
+```
+```{r}
+cat("DOGE ARIMA GARCH MAE:",mean(abs(armagarch.cnt.doge-doge.ts.test)),"\nDOGE ARIMA GARCH PM:",
+sum((armagarch.cnt.doge-doge.ts.test)^2)/sum((doge.ts.test-mean(doge.ts.test))^2))
+```
+
+
+*** ARMA-GARCH rolling predictions ***
+
+```{r}
+fore.series.btc = NULL
+fore.se.btc = NULL
+fore.series.bnb = NULL
+fore.se.bnb = NULL
+fore.series.eth = NULL
+fore.se.eth = NULL
+fore.series.xrp = NULL
+fore.se.xrp = NULL
+fore.series.doge = NULL
+fore.se.doge = NULL
+for(f in 1: 14){
+    ## Fit models
+    data.btc = btc.ts.train
+    data.bnb = bnb.ts.train
+    data.eth = eth.ts.train
+    data.xrp = xrp.ts.train
+    data.doge = doge.ts.train
+    if(f>=2){
+       data.btc = c(btc.ts.train,btc.ts.test[1:(f-1)])
+       data.bnb = c(bnb.ts.train,bnb.ts.test[1:(f-1)])
+       data.eth = c(eth.ts.train,eth.ts.test[1:(f-1)])
+       data.xrp = c(xrp.ts.train,xrp.ts.test[1:(f-1)])
+       data.doge = c(doge.ts.train,doge.ts.test[1:(f-1)])
+    }
+    mod.btc1=ugarchfit(spec.btc, data.btc, solver = 'hybrid')
+    mod.bnb1=ugarchfit(spec.bnb, data.bnb, solver = 'hybrid')
+    mod.eth1=ugarchfit(spec.eth, data.eth, solver = 'hybrid')
+    mod.xrp1=ugarchfit(spec.xrp, data.xrp, solver = 'hybrid')
+    mod.doge1=ugarchfit(spec.doge, data.doge, solver = 'hybrid')
+    ## Forecast
+    fore.btc = ugarchforecast(mod.btc1,n.ahead=1,ci=0.95)
+    fore.series.btc = c(fore.series.btc, fore.btc@forecast$seriesFor)
+    fore.se.btc = c(fore.se.btc, fore.btc@forecast$sigmaFor)
+    fore.bnb = ugarchforecast(mod.bnb1,n.ahead=1,ci=0.95)
+    fore.series.bnb = c(fore.series.bnb, fore.bnb@forecast$seriesFor)
+    fore.se.bnb = c(fore.se.bnb, fore.bnb@forecast$sigmaFor)
+    fore.eth = ugarchforecast(mod.eth1,n.ahead=1,ci=0.95)
+    fore.series.eth = c(fore.series.eth, fore.eth@forecast$seriesFor)
+    fore.se.eth = c(fore.se.eth, fore.eth@forecast$sigmaFor)
+    fore.xrp = ugarchforecast(mod.xrp1,n.ahead=1,ci=0.95)
+    fore.series.xrp = c(fore.series.xrp, fore.xrp@forecast$seriesFor)
+    fore.se.xrp = c(fore.se.xrp, fore.xrp@forecast$sigmaFor)
+    fore.doge = ugarchforecast(mod.doge1,n.ahead=1,ci=0.95)
+    fore.series.doge = c(fore.series.doge, fore.doge@forecast$seriesFor)
+    fore.se.doge = c(fore.se.doge, fore.doge@forecast$sigmaFor)
+}
+```
+```{r}
+layout(mat = matrix(c(1,1,2,2,3,3,
+                      0,4,4,5,5,0), nrow = 2, byrow = TRUE))
+fore.series.btc=ts(fore.series.btc,start=1)
+lbound = ts(fore.series.btc-1.96*fore.se.btc,start=1)
+ubound = ts(fore.series.btc+1.96*fore.se.btc,start=1)
+ymin=min(btc.ts.test,fore.series.btc,lbound,ubound)
+ymax=max(btc.ts.test,fore.series.btc,lbound,ubound)
+plot(ts(btc.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="BTC ARMA-GARCH Predictions")
+points(fore.series.btc,lwd=2,col=btc.col)
+lines(lbound,lty=3,lwd= 2, col=btc.col)
+lines(ubound,lty=3,lwd= 2, col=btc.col)
+fore.series.bnb=ts(fore.series.bnb,start=1)
+lbound = ts(fore.series.bnb-1.96*fore.se.bnb,start=1)
+ubound = ts(fore.series.bnb+1.96*fore.se.bnb,start=1)
+ymin=min(bnb.ts.test,fore.series.bnb,lbound,ubound)
+ymax=max(bnb.ts.test,fore.series.bnb,lbound,ubound)
+plot(ts(bnb.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="BNB ARMA-GARCH Predictions")
+points(fore.series.bnb,lwd=2,col=bnb.col)
+lines(lbound,lty=3,lwd= 2, col=bnb.col)
+lines(ubound,lty=3,lwd= 2, col=bnb.col)
+fore.series.eth=ts(fore.series.eth,start=1)
+lbound = ts(fore.series.eth-1.96*fore.se.eth,start=1)
+ubound = ts(fore.series.eth+1.96*fore.se.eth,start=1)
+ymin=min(eth.ts.test,fore.series.eth,lbound,ubound)
+ymax=max(eth.ts.test,fore.series.eth,lbound,ubound)
+plot(ts(eth.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="ETH ARMA-GARCH Predictions")
+points(fore.series.eth,lwd=2,col=eth.col)
+lines(lbound,lty=3,lwd= 2, col=eth.col)
+lines(ubound,lty=3,lwd= 2, col=eth.col)
+fore.series.xrp=ts(fore.series.xrp,start=1)
+lbound = ts(fore.series.xrp-1.96*fore.se.xrp,start=1)
+ubound = ts(fore.series.xrp+1.96*fore.se.xrp,start=1)
+ymin=min(xrp.ts.test,fore.series.xrp,lbound,ubound)
+ymax=max(xrp.ts.test,fore.series.xrp,lbound,ubound)
+plot(ts(xrp.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="XRP ARMA-GARCH Predictions")
+points(fore.series.xrp,lwd=2,col=xrp.col)
+lines(lbound,lty=3,lwd= 2, col=xrp.col)
+lines(ubound,lty=3,lwd= 2, col=xrp.col)
+fore.series.doge=ts(fore.series.doge,start=1)
+lbound = ts(fore.series.doge-1.96*fore.se.doge,start=1)
+ubound = ts(fore.series.doge+1.96*fore.se.doge,start=1)
+ymin=min(doge.ts.test,fore.series.doge,lbound,ubound)
+ymax=max(doge.ts.test,fore.series.doge,lbound,ubound)
+plot(ts(doge.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="DOGE ARMA-GARCH Predictions")
+points(fore.series.doge,lwd=2,col=doge.col)
+lines(lbound,lty=3,lwd= 2, col=doge.col)
+lines(ubound,lty=3,lwd= 2, col=doge.col)
+```
+
+```{r}
+cat("BTC ARMA-GARCH MAE:",mean(abs(fore.series.btc-btc.ts.test)),"\nBTC ARMA-GARCH PM:",
+sum((fore.series.btc-btc.ts.test)^2)/sum((btc.ts.test-mean(btc.ts.test))^2))
+```
+```{r}
+cat("BNB ARMA-GARCH MAE:",mean(abs(fore.series.bnb-bnb.ts.test)),"\nBNB ARMA-GARCH PM:",
+sum((fore.series.bnb-bnb.ts.test)^2)/sum((bnb.ts.test-mean(bnb.ts.test))^2))
+```
+```{r}
+cat("ETH ARMA-GARCH MAE:",mean(abs(fore.series.eth-eth.ts.test)),"\nETH ARMA-GARCH PM:",
+sum((fore.series.eth-eth.ts.test)^2)/sum((eth.ts.test-mean(eth.ts.test))^2))
+```
+```{r}
+cat("XRP ARMA-GARCH MAE:",mean(abs(fore.series.xrp-xrp.ts.test)),"\nXRP ARMA-GARCH PM:",
+sum((fore.series.xrp-xrp.ts.test)^2)/sum((xrp.ts.test-mean(xrp.ts.test))^2))
+```
+```{r}
+cat("DOGE ARMA-GARCH MAE:",mean(abs(fore.series.doge-doge.ts.test)),"\nDOGE ARMA-GARCH PM:",
+sum((fore.series.doge-doge.ts.test)^2)/sum((doge.ts.test-mean(doge.ts.test))^2))
+```
+
+*** ARIMA-GARCH Rolling predictions ***
+
+```{r}
+fore.series.btc = NULL
+fore.se.btc = NULL
+fore.series.bnb = NULL
+fore.se.bnb = NULL
+fore.series.eth = NULL
+fore.se.eth = NULL
+fore.series.xrp = NULL
+fore.se.xrp = NULL
+fore.series.doge = NULL
+fore.se.doge = NULL
+for(f in 1: 14){
+    ## Fit models
+    data.btc = btc.ts.train
+    data.bnb = bnb.ts.train
+    data.eth = eth.ts.train
+    data.xrp = xrp.ts.train
+    data.doge = doge.ts.train
+    if(f>=2){
+       data.btc = c(btc.ts.train,btc.ts.test[1:(f-1)])
+       data.bnb = c(bnb.ts.train,bnb.ts.test[1:(f-1)])
+       data.eth = c(eth.ts.train,eth.ts.test[1:(f-1)])
+       data.xrp = c(xrp.ts.train,xrp.ts.test[1:(f-1)])
+       data.doge = c(doge.ts.train,doge.ts.test[1:(f-1)])
+    }
+    mod.btc1=ugarchfit(spec.btc1, data.btc, solver = 'hybrid')
+    mod.bnb1=ugarchfit(spec.bnb1, data.bnb, solver = 'hybrid')
+    mod.eth1=ugarchfit(spec.eth1, data.eth, solver = 'hybrid')
+    mod.xrp1=ugarchfit(spec.xrp1, data.xrp, solver = 'hybrid')
+    mod.doge1=ugarchfit(spec.doge1, data.doge, solver = 'hybrid')
+    ## Forecast
+    fore.btc = ugarchforecast(mod.btc1,n.ahead=1,ci=0.95)
+    fore.series.btc = c(fore.series.btc, fore.btc@forecast$seriesFor)
+    fore.se.btc = c(fore.se.btc, fore.btc@forecast$sigmaFor)
+    fore.bnb = ugarchforecast(mod.bnb1,n.ahead=1,ci=0.95)
+    fore.series.bnb = c(fore.series.bnb, fore.bnb@forecast$seriesFor)
+    fore.se.bnb = c(fore.se.bnb, fore.bnb@forecast$sigmaFor)
+    fore.eth = ugarchforecast(mod.eth1,n.ahead=1,ci=0.95)
+    fore.series.eth = c(fore.series.eth, fore.eth@forecast$seriesFor)
+    fore.se.eth = c(fore.se.eth, fore.eth@forecast$sigmaFor)
+    fore.xrp = ugarchforecast(mod.xrp1,n.ahead=1,ci=0.95)
+    fore.series.xrp = c(fore.series.xrp, fore.xrp@forecast$seriesFor)
+    fore.se.xrp = c(fore.se.xrp, fore.xrp@forecast$sigmaFor)
+    fore.doge = ugarchforecast(mod.doge1,n.ahead=1,ci=0.95)
+    fore.series.doge = c(fore.series.doge, fore.doge@forecast$seriesFor)
+    fore.se.doge = c(fore.se.doge, fore.doge@forecast$sigmaFor)
+}
+```
+```{r}
+layout(mat = matrix(c(1,1,2,2,3,3,
+                      0,4,4,5,5,0), nrow = 2, byrow = TRUE))
+fore.series.btc=ts(fore.series.btc,start=1)
+lbound = ts(fore.series.btc-1.96*fore.se.btc,start=1)
+ubound = ts(fore.series.btc+1.96*fore.se.btc,start=1)
+ymin=min(btc.ts.test,fore.series.btc,lbound,ubound)
+ymax=max(btc.ts.test,fore.series.btc,lbound,ubound)
+plot(ts(btc.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="BTC ARIMA-GARCH Predictions")
+points(fore.series.btc,lwd=2,col=btc.col)
+lines(lbound,lty=3,lwd= 2, col=btc.col)
+lines(ubound,lty=3,lwd= 2, col=btc.col)
+fore.series.bnb=ts(fore.series.bnb,start=1)
+lbound = ts(fore.series.bnb-1.96*fore.se.bnb,start=1)
+ubound = ts(fore.series.bnb+1.96*fore.se.bnb,start=1)
+ymin=min(bnb.ts.test,fore.series.bnb,lbound,ubound)
+ymax=max(bnb.ts.test,fore.series.bnb,lbound,ubound)
+plot(ts(bnb.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="BNB ARIMA-GARCH Predictions")
+points(fore.series.bnb,lwd=2,col=bnb.col)
+lines(lbound,lty=3,lwd= 2, col=bnb.col)
+lines(ubound,lty=3,lwd= 2, col=bnb.col)
+fore.series.eth=ts(fore.series.eth,start=1)
+lbound = ts(fore.series.eth-1.96*fore.se.eth,start=1)
+ubound = ts(fore.series.eth+1.96*fore.se.eth,start=1)
+ymin=min(eth.ts.test,fore.series.eth,lbound,ubound)
+ymax=max(eth.ts.test,fore.series.eth,lbound,ubound)
+plot(ts(eth.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="ETH ARIMA-GARCH Predictions")
+points(fore.series.eth,lwd=2,col=eth.col)
+lines(lbound,lty=3,lwd= 2, col=eth.col)
+lines(ubound,lty=3,lwd= 2, col=eth.col)
+fore.series.xrp=ts(fore.series.xrp,start=1)
+lbound = ts(fore.series.xrp-1.96*fore.se.xrp,start=1)
+ubound = ts(fore.series.xrp+1.96*fore.se.xrp,start=1)
+ymin=min(xrp.ts.test,fore.series.xrp,lbound,ubound)
+ymax=max(xrp.ts.test,fore.series.xrp,lbound,ubound)
+plot(ts(xrp.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="XRP ARIMA-GARCH Predictions")
+points(fore.series.xrp,lwd=2,col=xrp.col)
+lines(lbound,lty=3,lwd= 2, col=xrp.col)
+lines(ubound,lty=3,lwd= 2, col=xrp.col)
+fore.series.doge=ts(fore.series.doge,start=1)
+lbound = ts(fore.series.doge-1.96*fore.se.doge,start=1)
+ubound = ts(fore.series.doge+1.96*fore.se.doge,start=1)
+ymin=min(doge.ts.test,fore.series.doge,lbound,ubound)
+ymax=max(doge.ts.test,fore.series.doge,lbound,ubound)
+plot(ts(doge.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="DOGE ARIMA-GARCH Predictions")
+points(fore.series.doge,lwd=2,col=doge.col)
+lines(lbound,lty=3,lwd= 2, col=doge.col)
+lines(ubound,lty=3,lwd= 2, col=doge.col)
+```
+
+```{r}
+cat("BTC ARIMA-GARCH MAE:",mean(abs(fore.series.btc-btc.ts.test)),"\nBTC ARIMA-GARCH PM:",
+sum((fore.series.btc-btc.ts.test)^2)/sum((btc.ts.test-mean(btc.ts.test))^2))
+```
+```{r}
+cat("BNB ARIMA-GARCH MAE:",mean(abs(fore.series.bnb-bnb.ts.test)),"\nBNB ARIMA-GARCH PM:",
+sum((fore.series.bnb-bnb.ts.test)^2)/sum((bnb.ts.test-mean(bnb.ts.test))^2))
+```
+```{r}
+cat("ETH ARIMA-GARCH MAE:",mean(abs(fore.series.eth-eth.ts.test)),"\nETH ARIMA-GARCH PM:",
+sum((fore.series.eth-eth.ts.test)^2)/sum((eth.ts.test-mean(eth.ts.test))^2))
+```
+```{r}
+cat("XRP ARIMA-GARCH MAE:",mean(abs(fore.series.xrp-xrp.ts.test)),"\nXRP ARIMA-GARCH PM:",
+sum((fore.series.xrp-xrp.ts.test)^2)/sum((xrp.ts.test-mean(xrp.ts.test))^2))
+```
+```{r}
+cat("DOGE ARIMA-GARCH MAE:",mean(abs(fore.series.doge-doge.ts.test)),"\nDOGE ARIMA-GARCH PM:",
+sum((fore.series.doge-doge.ts.test)^2)/sum((doge.ts.test-mean(doge.ts.test))^2))
+```
+
+
+

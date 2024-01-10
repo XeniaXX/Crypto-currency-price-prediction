@@ -1,0 +1,492 @@
+---
+title: "ISYE 6402 Final project BTC analysis(daily) ARIMA"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include = FALSE}
+
+# Set up the default parameters
+# 1. The code block will be shown in the document
+# 2. set up figure display size
+# 3. turn off all the warnings and messages
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width = 8, fig.height = 4)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+# Background
+
+
+```{r library}
+
+library(lubridate)
+library(mgcv)
+library(tseries)
+library(zoo)
+library(mgcv)
+library(TSA)
+library(dynlm)
+library(ggplot2)
+library(reshape2)
+library(greybox)
+library(mlr)
+library(lubridate)
+library(dplyr)
+library(data.table)
+library(forecast)
+```
+
+
+**Part 1: EDA**
+
+```{r}
+#Initialize plot color
+c.col<-"#FF8C00"
+data.daily <- read.csv("BTC.csv", head = TRUE)
+setnames(data.daily, tolower(names(data.daily)))
+ts.start=c(2020,7,7)
+data.daily$month <- format(as.Date(data.daily$date, format="%Y-%m-%d"),"%B")
+data.daily$weekday <- as.character(lubridate::wday(data.daily$date, label=FALSE, abbr=FALSE))
+data.daily$monthday <- format(as.Date(data.daily$date, format="%Y-%m-%d"),"%d")
+daily.ts<-ts(log(data.daily$close),start=ts.start,freq = 365.25)
+```
+
+```{r}
+ts.plot(daily.ts,ylab="Log Price",main='Log Closing price',col=c.col)
+```
+### Decomposition
+```{r}
+plot(decompose(daily.ts, "multiplicative"),col=c.col)
+```
+```{r}
+acf(daily.ts,lag.max=365*3,main="ACF plot for Log Price",col=c.col)
+```
+
+*Result*: 
+
+From looking at the time series plots we can see an increasing, then decreasing and again increasing trend as well as some seasonal patterns. The acf plot confirms the trend as well as some seasonal patterns. The time series doesn't seem to be stationary.
+
+
+### Differenced data
+
+```{r}
+#Data difference 
+par(mfrow=c(2,2))
+daily.dif=diff(diff(daily.ts,1),365)
+n = length(daily.dif)
+nfit = n-14
+daily.dif.train = daily.dif[1:nfit]
+plot(daily.dif,main='Differenced Daily Log Price',col=c.col)
+acf(daily.dif,main='ACF for Differenced Daily Log Price',lag.max=40,col=c.col)
+pacf(daily.dif,main='PACF for Differenced Daily Log Price',lag.max=40,col=c.col)
+```
+
+```{r}
+adf.test(daily.dif)
+```
+We can see that the differenced data in terms of trend and seasonality might be stationary since most of the values on the acf and pacf plots are within the confidence bands.
+
+**Part 2: non-parametric trend using splines and monthly seasonality using ANOVA**  Fit the daily price with a non-parametric trend using splines and monthly seasonality using ANOVA. 
+
+```{r}
+## Fit a non-parametric model for trend and ANOVA model for seasonality
+daily.time.pts = c(1:length(daily.ts))
+length(daily.time.pts)
+daily.gam.fit = gam(daily.ts~s(daily.time.pts) + data.daily$month + data.daily$weekday+data.daily$monthday)
+summary(daily.gam.fit)
+```
+
+```{r}
+## Fit a non-parametric model for trend and ANOVA model for seasonality
+daily.time.pts = c(1:length(daily.ts))
+length(daily.time.pts)
+daily.gam.fit = gam(daily.ts~s(daily.time.pts) + data.daily$month)
+summary(daily.gam.fit)
+```
+
+We can see that the monthly seasonality is significant, while day of the week and day of the month aren't significant. The trend is significant.
+```{r}
+plot(daily.ts,ylab="Log Price",col="black")
+lines(ts((fitted(daily.gam.fit)),start=ts.start, freq = 365.25),col=c.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",c.col),cex=0.7)
+```
+```{r}
+daily.dif.fit.gam = ts((daily.ts-fitted(daily.gam.fit)),start=ts.start, freq = 365.25)
+ts.plot(daily.dif.fit.gam,ylab="Residual Process",col=c.col)
+```
+```{r}
+acf(daily.dif.fit.gam,lag.max=356,main="Non-parametric model for trend and ANOVA model",col=c.col)
+```
+```{r}
+adf.test(daily.dif.fit.gam)
+```
+*Response:* 
+
+Looking at the fitted values plot we can see that overall our model does fit most of the patterns in the data. However, our model didn't fit several picks in the data which is confirmed by the residual plot. Looking at the acf plot we can see seasonal patterns.
+
+As a result, I think that the residual process isn't stationary.
+
+
+**Part 3 (ARMA fitting and order selection).** 
+
+```{r}
+## Fit an ARMA model to the difference time series 
+norder = 11
+#Iterative function
+test_modelA <- function(p,q,data){
+  mod = Arima(data,order=c(p,0,q),method="ML")
+  current.aic = AIC(mod)
+  df = data.frame(p,q,current.aic)
+  names(df) <- c("p","q","AIC")
+  #print(paste(p,d,q,current.aic,sep=" "))
+  return(df)
+}
+
+orders = data.frame(Inf,Inf,Inf)
+names(orders) <- c("p","q","AIC")
+
+#Orders for DAL
+for (p in 0:norder){
+    for (q in 0:norder) {
+      possibleError <- tryCatch(
+        orders<-rbind(orders,test_modelA(p,q,daily.dif.train)),
+        error=function(e) e
+      )
+      if(inherits(possibleError, "error")) next
+      
+    }
+}
+orders <- orders[order(-orders$AIC),]
+tail(orders,5)
+```
+```{r}
+# The optimal value according to the AIC
+porder <- tail(orders,1)$p
+qorder <- tail(orders,1)$q
+aic_value <- tail(orders,1)$AIC
+```
+```{r}
+cat("Order of the selected model is: AR order p =", porder, "; MA order q =", qorder)
+cat(" The best model AIC is", aic_value)
+# Fit the "best" arima model
+final_model <- Arima(daily.dif.train, order = c(porder,0,qorder), method = "ML")
+```
+
+```{r}
+final_model
+```
+```{r}
+coef(final_model)[1:porder]
+# All absolute values are greater than 1 => Causal
+abs.roots<-list()
+for (root in c(polyroot(c(1,-c(coef(final_model)[1:porder]))))){
+ abs.roots<-append(abs.roots,abs(root))
+}
+abs.roots
+```
+```{r}
+final_model$coef
+## compute the test statistics
+testval <-
+  as.numeric(final_model$coef) / as.numeric(sqrt(diag(final_model$var.coef)))
+abs(testval)>qnorm((1-0.05/2))
+which(abs(testval)>qnorm((1-0.05/2)))
+```
+
+
+
+*Result*:
+
+Since absolute values of AR coefficients are strictly greater than 1, the model is causal.
+
+Statistical significance analysis showed that AR coefficients 1,4,7,8 and 9 are statistically significant. Among MA coefficients 1,4, 7 and 8 are significant. It follows that we can't use a simpler model since AR and MA coefficients corresponding to the highest lags (9 and 8 respectively) are significant.
+
+
+```{r}
+ts.plot(daily.dif.train,ylab="Log Price",col="black")
+lines(fitted(final_model),col=c.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",c.col),cex=0.7)
+```
+From the fitted values plot we can see that the model failed to fit the data and there is a lot of variance that wasn't captured by the model.
+
+
+**Residual analysis**
+
+```{r}
+## Residual analysis
+par(mfrow=c(2,3))
+resids <- resid(final_model)
+plot(resids, ylab='Residuals',type='o',main="Residual Plot",col=c.col)
+abline(h=0)
+acf(resids,main="ACF: Residuals",col=c.col)
+pacf(resids, main="PACF: Residuals",col=c.col)
+hist(resids,xlab='Residuals',main='Histogram: Residuals',col=c.col)
+qqnorm(resids,ylab="Sample Q",xlab="Theoretical Q",col=c.col)
+qqline(resids)
+```
+
+*Results*: 
+The residual plot for the model doesn't show a pattern. 
+However, the variance of the residuals doesn't seem to be constant. Since we can see clusters with higher variance. The acf plots show that most of the values lie inside the confidence bands. The same is for PACF plots: most of the values lie within the confidence bands. 
+The QQ-norm plots show left and right heavy tails: which indicates that the distribution has heavier tails than the normal. We can also see several outliers. Other than that, the residuals look pretty symmetric. 
+Overall, the model doesn't satisfy the R implementation since the residual process isn't normally distributed with constant variance.
+
+**Testing uncorrelated residuals** 
+
+
+```{r}
+# Test and see if residuals are correlated
+Box.test(final_model$resid, lag = (porder+qorder+1), type = "Ljung-Box", fitdf = (porder+qorder))
+```
+
+*Results*: 
+
+The null hypothesis for Ljung-Box test is that the residuals are uncorrelated. Since we can see that we got a p-value smaller than 0.05, it indicates that we can reject the null hypothesis and our residuals are correlated with 0.05 confidence.
+
+```{r}
+# Test for arch effect
+Box.test(final_model$resid^2, lag = (porder+qorder+1), type = "Ljung-Box", fitdf = (porder+qorder))
+```
+```{r}
+#perform shapiro-wilk test: null hypothesis: normal
+shapiro.test(residuals(final_model))
+```
+```{r}
+adf.test(final_model$resid)
+```
+
+We can see that the residual process doesn't seem to have constant variance. Test for heteroscedasticity (arch effect) confirms that the variance changes with time(we reject the null hypothesis that there is no arch effect).
+
+From the QQ-plot and Shapiro-Wilk normality test follow that the residual process isn't normally distributed. 
+
+ACF plot doesn't show correlations since most of the values are inside the confidence band. 
+
+Augmented Dickey-Fuller Test shows that the residual processes is stationary.
+
+Since the variance isn't constant and the normality assumption of the residuals is violated our model doesn't provide a good fit (normal distribution is required for model fitting using MLE).
+
+
+```{r}
+## Forecasting with ARIMA: 9 Weeks Ahead
+out_pred = as.vector(predict(final_model,n.ahead=n-nfit))
+ubound = out_pred$pred+1.96*out_pred$se
+lbound = out_pred$pred-1.96*out_pred$se
+ymin = min(lbound)
+ymax = max(ubound)
+par(mfrow=c(1,1))
+plot(ts(daily.dif[nfit+1:n][1:(n-nfit)],start=1),type="l", ylim=c(ymin,ymax), xlab="Time", ylab="Log Price")
+points(ts(out_pred$pred,start=1),col=c.col)
+lines(ts(ubound,start=1),lty=3,lwd= 2, col=c.col)
+lines(ts(lbound,start=1),lty=3,lwd= 2, col=c.col)
+```
+Surprisingly, we can see that the model performs well predicting. All the actual values are within the 95% confidence interval.
+
+```{r}
+cat("MAE:",mean(abs(out_pred$pred-daily.dif[nfit+1:n][1:(n-nfit)])),"\n PM:",
+sum((out_pred$pred-daily.dif[nfit+1:n][1:(n-nfit)])^2)/sum((daily.dif[nfit+1:n][1:(n-nfit)]-mean(daily.dif[nfit+1:n][1:(n-nfit)]))^2))
+```
+
+
+```{r}
+# Arima with Harmonic seasonality
+n = length(data.daily$date)
+nfit = n-14
+training.month <- lubridate::month(as.Date(data.daily$date, format="%Y-%m-%d"),label=FALSE)[1:nfit]
+test.month<- lubridate::month(as.Date(data.daily$date, format="%Y-%m-%d"),label=FALSE)[nfit+1:n]
+training.weekday <- lubridate::wday(data.daily$date, label=FALSE, abbr=FALSE)[1:nfit]
+test.weekday <- lubridate::wday(data.daily$date, label=FALSE, abbr=FALSE)[nfit+1:n]
+```
+```{r}
+harmonic.train <- cbind(sin(training.weekday*2*pi/7),cos(training.weekday*2*pi/7),sin(training.month*2*pi/12),cos(training.month*2*pi/12))
+daily.ts.train = ts(daily.ts[1:nfit],start=ts.start,freq = 365.25)
+test_modelA <- function(p,d,q){
+  mod = Arima(daily.ts.train,order=c(p,d,q),xreg=as.matrix(harmonic.train))
+  current.aic = AIC(mod)
+  current.bic = BIC(mod)
+  df = data.frame(p,d,q,current.aic,current.bic)
+  names(df) <- c("p","d","q","AIC","BIC")
+  #print(paste(p,d,q,current.aic,sep=" "))
+  return(df)
+}
+```
+
+```{r}
+library(forecast)
+orders = data.frame(Inf,Inf,Inf,Inf,Inf)
+names(orders) <- c("p","d","q","AIC","BIC")
+
+for (p in 0:10){
+  for (d in 0:1){
+    for (q in 0:10){
+      possibleError <- tryCatch(
+        orders<-rbind(orders,test_modelA(p,d,q)),
+        error=function(e) e
+      )
+      if(inherits(possibleError, "error")) next
+    }
+  }
+}
+orders <- orders[order(-orders$AIC),]
+tail(orders)
+orders1 <- orders[order(-orders$BIC),]
+tail(orders1)
+```
+```{r}
+porder <- tail(orders,2)$p[1]
+qorder <- tail(orders,2)$q[1]
+dorder <- tail(orders,2)$d[1]
+aic_value <- tail(orders,2)$AIC[1]
+#porder <- tail(orders1,6)$p[1]
+#qorder <- tail(orders1,6)$q[1]
+#dorder <- tail(orders1,6)$d[1]
+#aic_value <- tail(orders,6)$AIC[1]
+bic_value <- tail(orders,2)$BIC[1]
+cat("Order of the selected model is: AR order p =", porder, "; MA order q =", qorder, "dorder d =", dorder)
+cat(" The best model AIC is", aic_value)
+cat(" The best model BIC is", bic_value)
+```
+
+```{r}
+# Fit the "best" arima model
+final_model1 <- Arima(daily.ts.train, order=c(porder,dorder,qorder), xreg=as.matrix(harmonic.train))
+final_model1
+```
+```{r}
+coef(final_model1)
+# All absolute values are greater than 1 => Causal
+abs.roots<-list()
+for (root in c(polyroot(c(1,-c(coef(final_model1)[1:porder]))))){
+ abs.roots<-append(abs.roots,abs(root))
+}
+abs.roots
+## compute the test statistics
+testval <-
+  as.numeric(final_model1$coef) / as.numeric(sqrt(diag(final_model1$var.coef)))
+abs(testval)>qnorm((1-0.05/2))
+which(abs(testval)>qnorm((1-0.05/2)))
+```
+```{r}
+ts.plot(daily.ts.train,ylab="Log Price",col="black")
+lines(ts((fitted(final_model1)),start=ts.start, freq = 365.25),col=c.col)
+legend(x="topleft",legend=c("Log Price","Fitted values"), lty=1,col=c("black",c.col),cex=0.7)
+```
+```{r}
+# residual analysis
+par(mfrow=c(2,3))
+plot(resid(final_model1), ylab='Standardized Residuals',type='o',main="Residual Plot",col=c.col)
+abline(h=0)
+acf(as.vector(resid(final_model1)),lag.max=36,main="ACF: Residuals",col=c.col)
+pacf(as.vector(resid(final_model1)),lag.max=36,main="PACF: Residuals",col=c.col)
+hist(resid(final_model1),xlab='Standardized Residuals',main='Histogram: Residuals',col=c.col)
+qqnorm(resid(final_model1),col=c.col)
+qqline(resid(final_model1))
+```
+
+**Testing uncorrelated residuals** 
+
+
+```{r}
+# Test and see if residuals are correlated
+Box.test(final_model1$resid, lag = (porder+qorder+1), type = "Ljung-Box", fitdf = (porder+qorder))
+```
+
+*Results*: 
+
+The null hypothesis for Ljung-Box test is that the residuals are uncorrelated. Since we can see that we got a pretty small p-value, it indicates that we reject the null hypothesis and our residuals are probably correlated.
+
+```{r}
+# Test for arch effect
+Box.test(final_model1$resid^2, lag = (porder+qorder+1), type = "Ljung-Box", fitdf = (porder+qorder))
+```
+```{r}
+#perform shapiro-wilk test: null hypothesis: normal
+shapiro.test(residuals(final_model1))
+```
+```{r}
+adf.test(final_model1$resid)
+```
+
+We can see that the residual process doesn't seem to have constant variance. Test for heteroscedasticity (arch effect) confirms that the variance changes with time(we reject the null hypothesis that there is no arch effect).
+
+From the QQ-plot and Shapiro-Wilk normality test follow that the residual process isn't normally distributed. 
+
+ACF and PACF plots don't show correlations since most of the values are inside the confidence band. 
+
+Augmented Dickey-Fuller Test shows that the residual processes is stationary.
+
+Since the variance isn't constant and the normality assumption of the residuals is violated our model doesn't provide a good fit (normal distribution is required for model fitting using MLE).
+
+** Predictions **
+*** N-ahead prediction ***
+
+```{r}
+harmonic.test <- cbind(sin(test.weekday*2*pi/7),cos(test.weekday*2*pi/7),sin(test.month*2*pi/12),cos(test.month*2*pi/12))
+daily.ts.test=daily.ts[nfit+1:n][1:(n-nfit)]
+pred=predict(final_model1,n.ahead=14,newxreg=as.matrix(harmonic.test),ci=0.95)
+```
+```{r}
+arma.cnt = pred$pred[1:14]
+arma.cnt.ts = ts(arma.cnt,start=1)
+lo.arma.cnt = ts(arma.cnt-1.96*pred$se,start=1)
+up.arma.cnt = ts(arma.cnt+1.96*pred$se,start=1)
+```
+```{r}
+ymin=min(daily.ts.test,arma.cnt.ts,lo.arma.cnt,up.arma.cnt)
+ymax=max(daily.ts.test,arma.cnt.ts,lo.arma.cnt,up.arma.cnt)
+par(mfrow=c(1,1))
+plot(ts(daily.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="")
+points(arma.cnt.ts,lwd=2,col=c.col)
+lines(lo.arma.cnt,lty=3,lwd= 2, col=c.col)
+lines(up.arma.cnt,lty=3,lwd= 2, col=c.col)
+```
+
+```{r}
+cat("MAE:",mean(abs(arma.cnt-daily.ts.test)),"\n PM:",
+sum((arma.cnt-daily.ts.test)^2)/sum((daily.ts.test-mean(daily.ts.test))^2))
+```
+
+We can see that the model performs well predictions since all the actual values are within the confidence bands.
+
+*** Rolling predictions ***
+
+```{r}
+nfore = n-nfit
+fore.series = NULL
+fore.se = NULL
+for(f in 1: nfore){
+    ## Fit models
+    data = daily.ts.train
+    xreg.data = harmonic.train
+    if(f>=2){
+       data = c(daily.ts.train,daily.ts.test[1:(f-1)])
+       xreg.data=rbind(harmonic.train,harmonic.test[1:(f-1),])
+    }
+    final_model2 = Arima(data, order=c(porder,dorder,qorder), xreg=xreg.data)
+    ## Forecast
+    fore = predict(final_model2,n.ahead=1,newxreg=matrix(harmonic.test[f,],ncol=4),ci=0.95)
+    fore.series = c(fore.series, fore$pred)
+    fore.se = c(fore.se, fore$se)
+}
+```
+
+```{r}
+fore.series=ts(fore.series,start=1)
+lbound = ts(fore.series-1.96*fore.se,start=1)
+ubound = ts(fore.series+1.96*fore.se,start=1)
+ymin=min(daily.ts.test,fore.series,lbound,ubound)
+ymax=max(daily.ts.test,fore.series,lbound,ubound)
+par(mfrow=c(1,1))
+plot(ts(daily.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="")
+points(fore.series,lwd=2,col=c.col)
+lines(lbound,lty=3,lwd= 2, col=c.col)
+lines(ubound,lty=3,lwd= 2, col=c.col)
+```
+```{r}
+cat("MAE:",mean(abs(fore.series-daily.ts.test)),"\n PM:",
+sum((fore.series-daily.ts.test)^2)/sum((daily.ts.test-mean(daily.ts.test))^2))
+```
+
+We can see that the model performs well predictions since all the actual values are within the confidence bands. The rolling predictions show the better PM than n-ahead predictions.

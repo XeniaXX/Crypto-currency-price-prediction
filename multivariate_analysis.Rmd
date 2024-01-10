@@ -1,0 +1,527 @@
+---
+title: "ISYE 6402 Project Multivariate Analysis"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include = FALSE}
+
+# Set up the default parameters
+# 1. The code block will be shown in the document
+# 2. set up figure display size
+# 3. turn off all the warnings and messages
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width = 8, fig.height = 4)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+**Date:** The date during which each data point was recorded
+
+**BTC:** Closing stock price for Bitcoin
+
+**BNB:** Closing stock price for Binance Coin
+
+**ETH:** Closing stock price for Ether
+
+**XRP:** Closing stock price for XRP
+
+**DOGE:** Closing stock price for Dogecoin
+
+
+
+```{r library}
+library(zoo)
+library(lubridate)
+library(mgcv)
+library(TSA)
+library(xts)
+library(vars)
+library(rugarch)
+library(aod)
+```
+
+# Instructions on reading the data
+
+To read the data in `R`, save the file in your working directory (make sure you have changed the directory if different from the R working directory) and read the data using the `R` function `read.csv()`
+
+```{r}
+#Read in data
+#create data frame with 0 rows and 3 columns
+data <- data.frame(matrix(ncol = 6, nrow = 1240))
+#provide column names
+colnames(data) <- c('Date','BTC', 'BNB', 'ETH','XRP','DOGE')
+data[,1] <-read.csv("BTC.csv", head = TRUE)$Date
+data[,2] <-read.csv("BTC.csv", head = TRUE)$Close
+data[,3] <-read.csv("BNB.csv", head = TRUE)$Close
+data[,4] <-read.csv("ETH.csv", head = TRUE)$Close
+data[,5] <-read.csv("XRP.csv", head = TRUE)$Close
+data[,6] <-read.csv("DOGE.csv", head = TRUE)$Close
+for (i in 2:6){
+  data[,i] <- log(data[,i])
+}
+data$Date<-as.Date(data$Date)
+data.train<-data[1:(nrow(data)-14),]
+data.test<-data[(nrow(data)-13):nrow(data),]
+```
+
+# Part1: Exploratory Data Analysis
+
+```{r}
+#Convert stock data to Time Series
+btc.ts<-ts(data$BTC)
+bnb.ts<-ts(data$BNB)
+eth.ts<-ts(data$ETH)
+xrp.ts<-ts(data$XRP)
+doge.ts<-ts(data$DOGE)
+#Initialize plot colors
+btc.col<-"#FF8C00"
+bnb.col<-"#008000"
+eth.col<-"#20B2AA"
+xrp.col<-"#1E90FF"
+doge.col<-"#9932CC"
+#Plot each Time Series
+plot(ts(data[,2:6]),  main = "Log Price")
+layout(mat = matrix(c(1,1,2,2,3,3,
+                      0,4,4,5,5,0), nrow = 2, byrow = TRUE))
+plot(data$Date,btc.ts,main="BTC",xlab="Time",ylab="Log Price",col=btc.col,type = "l")
+plot(data$Date,bnb.ts,main="BNB",xlab="Time",ylab="Log Price",col=bnb.col,type = "l")
+plot(data$Date,eth.ts,main="ETH",xlab="Time",ylab="Log Price",col=eth.col,type = "l")
+plot(data$Date,xrp.ts,main="XRP",xlab="Time",ylab="Log Price",col=xrp.col,type = "l")
+plot(data$Date,doge.ts,main="DOGE",xlab="Time",ylab="Log Price",col=doge.col,type = "l")
+```
+
+*Response:*
+
+```{r}
+stats::acf(data.train[2:6], lag.max = 100)
+```
+
+
+# Part 2: Multivariate Modeling
+
+```{r}
+stock.var.select<-VARselect(data.train[,2:6],lag.max = 15)
+stock.var.select$selection
+```
+
+The optimal VAR order to model the five stock price time series using HQ as the selection criteria is 1. The summary of this model is shown below:
+```{r}
+stock.var<-VAR(data.train[,2:6],p=1)
+summary(stock.var)
+```
+
+
+
+** Testing Granger Causality **
+
+```{r}
+#Check covariance matrix column names
+var.model = vcov(stock.var)
+colnames(var.model)
+```
+** BTC **
+
+```{r}
+# Check coefficients for BTC column names
+coefs = coefficients(stock.var)$BTC[,1]
+names(coefs)
+```
+```{r}
+# Test Granger causality from BNB to BTC
+wald.test(coefs[c(2)], Sigma = var.model[c(3),c(3)], Terms = 1)
+```
+```{r}
+# Test Granger causality from ETH to BTC
+wald.test(coefs[c(3)], Sigma = var.model[c(4),c(4)], Terms = 1)
+```
+```{r}
+# Test Granger causality from XRP to BTC
+wald.test(coefs[c(4)], Sigma = var.model[c(5),c(5)], Terms = 1)
+```
+```{r}
+# Test Granger causality from DOGE to BTC
+wald.test(coefs[c(5)], Sigma = var.model[c(6),c(6)], Terms = 1)
+```
+
+** BNB **
+
+```{r}
+# Check coefficients for BNB column names
+coefs = coefficients(stock.var)$BNB[,1]
+names(coefs)
+```
+```{r}
+# Test Granger causality from BTC to BNB
+wald.test(coefs[c(1)], Sigma = var.model[c(8),c(8)], Terms = 1)
+```
+```{r}
+# Test Granger causality from ETH to BNB
+wald.test(coefs[c(3)], Sigma = var.model[c(10),c(10)], Terms = 1)
+```
+```{r}
+# Test Granger causality from XRP to BNB
+wald.test(coefs[c(4)], Sigma = var.model[c(11),c(11)], Terms = 1)
+```
+```{r}
+# Test Granger causality from DOGE to BNB
+wald.test(coefs[c(5)], Sigma = var.model[c(12),c(12)], Terms = 1)
+```
+
+** ETH **
+
+```{r}
+# Check coefficients for ETH column names
+coefs = coefficients(stock.var)$ETH[,1]
+names(coefs)
+```
+```{r}
+# Test Granger causality from BTC to ETH
+wald.test(coefs[c(1)], Sigma = var.model[c(14),c(14)], Terms = 1)
+```
+```{r}
+# Test Granger causality from BNB to ETH
+wald.test(coefs[c(2)], Sigma = var.model[c(15),c(15)], Terms = 1)
+```
+```{r}
+# Test Granger causality from XRP to ETH
+wald.test(coefs[c(4)], Sigma = var.model[c(17),c(17)], Terms = 1)
+```
+```{r}
+# Test Granger causality from DOGE to BTC
+wald.test(coefs[c(5)], Sigma = var.model[c(18),c(18)], Terms = 1)
+```
+
+** XRP **
+
+```{r}
+# Check coefficients for XRP column names
+coefs = coefficients(stock.var)$XRP[,1]
+names(coefs)
+```
+```{r}
+# Test Granger causality from BTC to XRP
+wald.test(coefs[c(1)], Sigma = var.model[c(20),c(20)], Terms = 1)
+```
+```{r}
+# Test Granger causality from BNB to XRP
+wald.test(coefs[c(2)], Sigma = var.model[c(21),c(21)], Terms = 1)
+```
+```{r}
+# Test Granger causality from ETH to XRP
+wald.test(coefs[c(3)], Sigma = var.model[c(22),c(22)], Terms = 1)
+```
+```{r}
+# Test Granger causality from DOGE to XRP
+wald.test(coefs[c(5)], Sigma = var.model[c(24),c(24)], Terms = 1)
+```
+
+
+** DOGE **
+
+```{r}
+# Check coefficients for DOGE column names
+coefs = coefficients(stock.var)$DOGE[,1]
+names(coefs)
+```
+```{r}
+# Test Granger causality from BTC to DOGE
+wald.test(coefs[c(1)], Sigma = var.model[c(26),c(26)], Terms = 1)
+```
+```{r}
+# Test Granger causality from BNB to DOGE
+wald.test(coefs[c(2)], Sigma = var.model[c(27),c(27)], Terms = 1)
+```
+```{r}
+# Test Granger causality from ETH to DOGE
+wald.test(coefs[c(3)], Sigma = var.model[c(28),c(28)], Terms = 1)
+```
+```{r}
+# Test Granger causality from XRP to DOGE
+wald.test(coefs[c(4)], Sigma = var.model[c(29),c(29)], Terms = 1)
+```
+
+** Restricted VAR **
+
+```{r}
+stock.var.restricted <- restrict(stock.var)
+summary(stock.var.restricted)
+```
+
+```{r}
+BIC(stock.var)
+BIC(stock.var.restricted)
+```
+
+** Residual analysis for VAR **
+
+```{r}
+plot(ts(residuals(stock.var.restricted)), main = "Residual process of Restricted VAR")
+```
+```{r}
+vars::arch.test(stock.var.restricted)
+```
+```{r}
+normality.test(stock.var.restricted)
+```
+```{r}
+serial.test(stock.var.restricted)
+```
+```{r}
+stats::acf(ts(residuals(stock.var.restricted)), lag.max = 100)
+```
+```{r}
+stats::pacf(ts(residuals(stock.var.restricted)), lag.max = 100)
+```
+
+We can see that the arch effect is present, therefore there's some heteroskedasticity. The results of the normality test show that the residuals aren't normally distributed. From the serial test follows that there is some serial correlation.
+
+
+
+** Rolling predictions **
+
+We use 1-step-ahead rolling prediction on the restricted VAR model. We compare the predictions with the previous models using MAE and Precision Measure for each time series.
+
+```{r}
+resmat <- stock.var.restricted$restrictions
+nfore <- length(data.test[,1])
+l <- length(btc.ts)
+btc.var.pred <- NULL
+bnb.var.pred <- NULL
+eth.var.pred <- NULL
+xrp.var.pred <- NULL
+doge.var.pred <- NULL
+for(f in 1: nfore){
+    ## Fit models
+    data = data.train[,2:6]
+    if(f>=2){
+       data = rbind(data.train[,2:6],data.test[1:(f-1),2:6])
+    }
+    final.model.1 = VAR(data, p=1)
+    final.model.2 = restrict(final.model.1, method = 'manual', resmat = resmat)
+    ## Forecast
+    btc.var.pred = rbind(btc.var.pred,predict(final.model.2, n.ahead=1,ci = 0.95)$fcst$BTC[,1:3])
+    bnb.var.pred = rbind(bnb.var.pred,predict(final.model.2, n.ahead=1,ci = 0.95)$fcst$BNB[,1:3])
+    eth.var.pred = rbind(eth.var.pred,predict(final.model.2, n.ahead=1,ci = 0.95)$fcst$ETH[,1:3])
+    xrp.var.pred = rbind(xrp.var.pred,predict(final.model.2, n.ahead=1,ci = 0.95)$fcst$XRP[,1:3])
+    doge.var.pred = rbind(doge.var.pred,predict(final.model.2, n.ahead=1,ci = 0.95)$fcst$DOGE[,1:3])
+}
+colnames(btc.var.pred) <- c("fcst","lower","upper")
+colnames(bnb.var.pred) <- c("fcst","lower","upper")
+colnames(eth.var.pred) <- c("fcst","lower","upper")
+colnames(xrp.var.pred) <- c("fcst","lower","upper")
+colnames(doge.var.pred) <- c("fcst","lower","upper")
+```
+
+```{r}
+layout(mat = matrix(c(1,1,2,2,3,3,
+                      0,4,4,5,5,0), nrow = 2, byrow = TRUE))
+plot(btc.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="BTC VAR Predictions",
+     ylim = c(min(btc.var.pred[,2]),max(btc.var.pred[,3])))
+points(ts(btc.var.pred[,1],start=1),lwd=2,col=btc.col)
+lines(ts(btc.var.pred[,2],start=1),lwd=2,col=btc.col)
+lines(ts(btc.var.pred[,3],start=1),lwd=2,col=btc.col)
+plot(bnb.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="BNB VAR Predictions",
+     ylim = c(min(bnb.var.pred[,2]),max(bnb.var.pred[,3])))
+points(ts(bnb.var.pred[,1],start=1),lwd=2,col=bnb.col)
+lines(ts(bnb.var.pred[,2],start=1),lwd=2,col=bnb.col)
+lines(ts(bnb.var.pred[,3],start=1),lwd=2,col=bnb.col)
+plot(eth.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="ETH VAR Predictions",
+     ylim = c(min(eth.var.pred[,2]),max(eth.var.pred[,3])))
+points(ts(eth.var.pred[,1],start=1),lwd=2,col=eth.col)
+lines(ts(eth.var.pred[,2],start=1),lwd=2,col=eth.col)
+lines(ts(eth.var.pred[,3],start=1),lwd=2,col=eth.col)
+plot(xrp.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="XRP VAR Predictions",
+     ylim = c(min(xrp.var.pred[,2]),max(xrp.var.pred[,3])))
+points(ts(xrp.var.pred[,1],start=1),lwd=2,col=xrp.col)
+lines(ts(xrp.var.pred[,2],start=1),lwd=2,col=xrp.col)
+lines(ts(xrp.var.pred[,3],start=1),lwd=2,col=xrp.col)
+plot(doge.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="DOGE VAR Predictions",
+     ylim = c(min(doge.var.pred[,2]),max(doge.var.pred[,3])))
+points(ts(doge.var.pred[,1],start=1),lwd=2,col=doge.col)
+lines(ts(doge.var.pred[,2],start=1),lwd=2,col=doge.col)
+lines(ts(doge.var.pred[,3],start=1),lwd=2,col=doge.col)
+```
+```{r}
+cat("BTC VAR MAE:",mean(abs(btc.var.pred[,1]-data.test[,2])),"\nBTC VAR PM:",
+sum((btc.var.pred[,1]-data.test[,2])^2)/sum((data.test[,2]-mean(data.test[,2]))^2))
+```
+```{r}
+cat("BNB VAR MAE:",mean(abs(bnb.var.pred[,1]-data.test[,3])),"\nBNB VAR PM:",
+sum((bnb.var.pred[,1]-data.test[,3])^2)/sum((data.test[,3]-mean(data.test[,3]))^2))
+```
+```{r}
+cat("ETH VAR MAE:",mean(abs(eth.var.pred[,1]-data.test[,4])),"\nBTC VAR PM:",
+sum((eth.var.pred[,1]-data.test[,4])^2)/sum((data.test[,4]-mean(data.test[,4]))^2))
+```
+```{r}
+cat("XRP VAR MAE:",mean(abs(xrp.var.pred[,1]-data.test[,5])),"\nXRP VAR PM:",
+sum((xrp.var.pred[,1]-data.test[,5])^2)/sum((data.test[,5]-mean(data.test[,5]))^2))
+```
+```{r}
+cat("DOGE VAR MAE:",mean(abs(doge.var.pred[,1]-data.test[,6])),"\nDOGE VAR PM:",
+sum((doge.var.pred[,1]-data.test[,6])^2)/sum((data.test[,6]-mean(data.test[,6]))^2))
+```
+
+** N - ahead  predictions **
+
+```{r}
+nfore <- length(data.test[,1])
+l <- length(btc.ts)
+fore.var.restrict = predict(stock.var.restricted,n.ahead=14,ci=0.95)
+btc.var.pred = fore.var.restrict$fcst$BTC[,1:3]
+bnb.var.pred = fore.var.restrict$fcst$BNB[,1:3]
+eth.var.pred = fore.var.restrict$fcst$ETH[,1:3]
+xrp.var.pred = fore.var.restrict$fcst$XRP[,1:3]
+doge.var.pred = fore.var.restrict$fcst$DOGE[,1:3]
+colnames(btc.var.pred) <- c("fcst","lower","upper")
+colnames(bnb.var.pred) <- c("fcst","lower","upper")
+colnames(eth.var.pred) <- c("fcst","lower","upper")
+colnames(xrp.var.pred) <- c("fcst","lower","upper")
+colnames(doge.var.pred) <- c("fcst","lower","upper")
+```
+
+```{r}
+layout(mat = matrix(c(1,1,2,2,3,3,
+                      0,4,4,5,5,0), nrow = 2, byrow = TRUE))
+plot(btc.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="BTC VAR Predictions",
+     ylim = c(min(btc.var.pred[,2]),max(btc.var.pred[,3])))
+points(ts(btc.var.pred[,1],start=1),lwd=2,col=btc.col)
+lines(ts(btc.var.pred[,2],start=1),lwd=2,col=btc.col)
+lines(ts(btc.var.pred[,3],start=1),lwd=2,col=btc.col)
+plot(bnb.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="BNB VAR Predictions",
+     ylim = c(min(bnb.var.pred[,2]),max(bnb.var.pred[,3])))
+points(ts(bnb.var.pred[,1],start=1),lwd=2,col=bnb.col)
+lines(ts(bnb.var.pred[,2],start=1),lwd=2,col=bnb.col)
+lines(ts(bnb.var.pred[,3],start=1),lwd=2,col=bnb.col)
+plot(eth.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="ETH VAR Predictions",
+     ylim = c(min(eth.var.pred[,2]),max(eth.var.pred[,3])))
+points(ts(eth.var.pred[,1],start=1),lwd=2,col=eth.col)
+lines(ts(eth.var.pred[,2],start=1),lwd=2,col=eth.col)
+lines(ts(eth.var.pred[,3],start=1),lwd=2,col=eth.col)
+plot(xrp.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="XRP VAR Predictions",
+     ylim = c(min(xrp.var.pred[,2]),max(xrp.var.pred[,3])))
+points(ts(xrp.var.pred[,1],start=1),lwd=2,col=xrp.col)
+lines(ts(xrp.var.pred[,2],start=1),lwd=2,col=xrp.col)
+lines(ts(xrp.var.pred[,3],start=1),lwd=2,col=xrp.col)
+plot(doge.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="DOGE VAR Predictions",
+     ylim = c(min(doge.var.pred[,2]),max(doge.var.pred[,3])))
+points(ts(doge.var.pred[,1],start=1),lwd=2,col=doge.col)
+lines(ts(doge.var.pred[,2],start=1),lwd=2,col=doge.col)
+lines(ts(doge.var.pred[,3],start=1),lwd=2,col=doge.col)
+```
+```{r}
+cat("BTC VAR MAE:",mean(abs(btc.var.pred[,1]-data.test[,2])),"\nBTC VAR PM:",
+sum((btc.var.pred[,1]-data.test[,2])^2)/sum((data.test[,2]-mean(data.test[,2]))^2))
+```
+```{r}
+cat("BNB VAR MAE:",mean(abs(bnb.var.pred[,1]-data.test[,3])),"\nBNB VAR PM:",
+sum((bnb.var.pred[,1]-data.test[,3])^2)/sum((data.test[,3]-mean(data.test[,3]))^2))
+```
+```{r}
+cat("ETH VAR MAE:",mean(abs(eth.var.pred[,1]-data.test[,4])),"\nBTC VAR PM:",
+sum((eth.var.pred[,1]-data.test[,4])^2)/sum((data.test[,4]-mean(data.test[,4]))^2))
+```
+```{r}
+cat("XRP VAR MAE:",mean(abs(xrp.var.pred[,1]-data.test[,5])),"\nXRP VAR PM:",
+sum((xrp.var.pred[,1]-data.test[,5])^2)/sum((data.test[,5]-mean(data.test[,5]))^2))
+```
+```{r}
+cat("DOGE VAR MAE:",mean(abs(doge.var.pred[,1]-data.test[,6])),"\nDOGE VAR PM:",
+sum((doge.var.pred[,1]-data.test[,6])^2)/sum((data.test[,6]-mean(data.test[,6]))^2))
+```
+
+*Response:* The observed values almost all fall into the prediction interval.
+
+
+*** Optimal VAR according to AIC ***
+
+
+
+The optimal VAR order to model the five stock price time series using AIC as the selection criteria is 14. The summary of this model is shown below:
+
+```{r}
+stock.var<-VAR(data.train[,2:6],p=14)
+stock.var
+```
+```{r}
+stock.var.restricted <- restrict(stock.var)
+summary(stock.var.restricted)
+```
+
+```{r}
+BIC(stock.var)
+BIC(stock.var.restricted)
+```
+
+
+```{r}
+nfore <- length(data.test[,1])
+l <- length(btc.ts)
+fore.var.restrict = predict(stock.var.restricted,n.ahead=14,ci=0.95)
+btc.var.pred = fore.var.restrict$fcst$BTC[,1:3]
+bnb.var.pred = fore.var.restrict$fcst$BNB[,1:3]
+eth.var.pred = fore.var.restrict$fcst$ETH[,1:3]
+xrp.var.pred = fore.var.restrict$fcst$XRP[,1:3]
+doge.var.pred = fore.var.restrict$fcst$DOGE[,1:3]
+colnames(btc.var.pred) <- c("fcst","lower","upper")
+colnames(bnb.var.pred) <- c("fcst","lower","upper")
+colnames(eth.var.pred) <- c("fcst","lower","upper")
+colnames(xrp.var.pred) <- c("fcst","lower","upper")
+colnames(doge.var.pred) <- c("fcst","lower","upper")
+```
+
+```{r}
+layout(mat = matrix(c(1,1,2,2,3,3,
+                      0,4,4,5,5,0), nrow = 2, byrow = TRUE))
+plot(btc.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="BTC VAR Predictions",
+     ylim = c(min(btc.var.pred[,2]),max(btc.var.pred[,3])))
+points(ts(btc.var.pred[,1],start=1),lwd=2,col=btc.col)
+lines(ts(btc.var.pred[,2],start=1),lwd=2,col=btc.col)
+lines(ts(btc.var.pred[,3],start=1),lwd=2,col=btc.col)
+plot(bnb.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="BNB VAR Predictions",
+     ylim = c(min(bnb.var.pred[,2]),max(bnb.var.pred[,3])))
+points(ts(bnb.var.pred[,1],start=1),lwd=2,col=bnb.col)
+lines(ts(bnb.var.pred[,2],start=1),lwd=2,col=bnb.col)
+lines(ts(bnb.var.pred[,3],start=1),lwd=2,col=bnb.col)
+plot(eth.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="ETH VAR Predictions",
+     ylim = c(min(eth.var.pred[,2]),max(eth.var.pred[,3])))
+points(ts(eth.var.pred[,1],start=1),lwd=2,col=eth.col)
+lines(ts(eth.var.pred[,2],start=1),lwd=2,col=eth.col)
+lines(ts(eth.var.pred[,3],start=1),lwd=2,col=eth.col)
+plot(xrp.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="XRP VAR Predictions",
+     ylim = c(min(xrp.var.pred[,2]),max(xrp.var.pred[,3])))
+points(ts(xrp.var.pred[,1],start=1),lwd=2,col=xrp.col)
+lines(ts(xrp.var.pred[,2],start=1),lwd=2,col=xrp.col)
+lines(ts(xrp.var.pred[,3],start=1),lwd=2,col=xrp.col)
+plot(doge.ts[(l-13):l],type="l",ylab="Log Price",xlab="Time",main="DOGE VAR Predictions",
+     ylim = c(min(doge.var.pred[,2]),max(doge.var.pred[,3])))
+points(ts(doge.var.pred[,1],start=1),lwd=2,col=doge.col)
+lines(ts(doge.var.pred[,2],start=1),lwd=2,col=doge.col)
+lines(ts(doge.var.pred[,3],start=1),lwd=2,col=doge.col)
+```
+```{r}
+cat("BTC VAR MAE:",mean(abs(btc.var.pred[,1]-data.test[,2])),"\nBTC VAR PM:",
+sum((btc.var.pred[,1]-data.test[,2])^2)/sum((data.test[,2]-mean(data.test[,2]))^2))
+```
+```{r}
+cat("BNB VAR MAE:",mean(abs(bnb.var.pred[,1]-data.test[,3])),"\nBNB VAR PM:",
+sum((bnb.var.pred[,1]-data.test[,3])^2)/sum((data.test[,3]-mean(data.test[,3]))^2))
+```
+```{r}
+cat("ETH VAR MAE:",mean(abs(eth.var.pred[,1]-data.test[,4])),"\nBTC VAR PM:",
+sum((eth.var.pred[,1]-data.test[,4])^2)/sum((data.test[,4]-mean(data.test[,4]))^2))
+```
+```{r}
+cat("XRP VAR MAE:",mean(abs(xrp.var.pred[,1]-data.test[,5])),"\nXRP VAR PM:",
+sum((xrp.var.pred[,1]-data.test[,5])^2)/sum((data.test[,5]-mean(data.test[,5]))^2))
+```
+```{r}
+cat("DOGE VAR MAE:",mean(abs(doge.var.pred[,1]-data.test[,6])),"\nDOGE VAR PM:",
+sum((doge.var.pred[,1]-data.test[,6])^2)/sum((data.test[,6]-mean(data.test[,6]))^2))
+```
+
+
+*Response:* The observed values all fall into the prediction interval. Both the prediction MAE and PM are a little larger than restricted var of order=1.
+

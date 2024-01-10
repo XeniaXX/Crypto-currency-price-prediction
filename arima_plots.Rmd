@@ -1,0 +1,282 @@
+---
+title: "ISYE 6402 Project ARMA GARCH Analysis for Log Price"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include = FALSE}
+
+# Set up the default parameters
+# 1. The code block will be shown in the document
+# 2. set up figure display size
+# 3. turn off all the warnings and messages
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width = 8, fig.height = 4)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+**Date:** The date during which each data point was recorded
+
+**BTC:** Closing stock price for Bitcoin
+
+**BNB:** Closing stock price for Binance Coin
+
+**ETH:** Closing stock price for Ether
+
+**XRP:** Closing stock price for XRP
+
+**DOGE:** Closing stock price for Dogecoin
+
+
+
+```{r library}
+library(zoo)
+library(lubridate)
+library(mgcv)
+library(TSA)
+library(xts)
+library(vars)
+library(rugarch)
+library(aod)
+library(forecast)
+```
+
+# Instructions on reading the data
+
+To read the data in `R`, save the file in your working directory (make sure you have changed the directory if different from the R working directory) and read the data using the `R` function `read.csv()`
+
+```{r}
+#Read in data
+#create data frame with 0 rows and 3 columns
+data <- data.frame(matrix(ncol = 6, nrow = 1240))
+#provide column names
+colnames(data) <- c('Date','BTC', 'BNB', 'ETH','XRP','DOGE')
+data[,1] <-read.csv("BTC.csv", head = TRUE)$Date
+data[,2] <-read.csv("BTC.csv", head = TRUE)$Close
+data[,3] <-read.csv("BNB.csv", head = TRUE)$Close
+data[,4] <-read.csv("ETH.csv", head = TRUE)$Close
+data[,5] <-read.csv("XRP.csv", head = TRUE)$Close
+data[,6] <-read.csv("DOGE.csv", head = TRUE)$Close
+for (i in 2:6){
+  data[,i] <- log(data[,i])
+}
+data$Date<-as.Date(data$Date)
+data.train<-data[1:(nrow(data)-14),]
+data.test<-data[(nrow(data)-13):nrow(data),]
+```
+
+# Part1: Exploratory Data Analysis
+
+```{r}
+#Convert stock data to Time Series
+btc.ts<-ts(data$BTC)
+bnb.ts<-ts(data$BNB)
+eth.ts<-ts(data$ETH)
+xrp.ts<-ts(data$XRP)
+doge.ts<-ts(data$DOGE)
+btc.ts.train<-ts(data.train$BTC)
+bnb.ts.train<-ts(data.train$BNB)
+eth.ts.train<-ts(data.train$ETH)
+xrp.ts.train<-ts(data.train$XRP)
+doge.ts.train<-ts(data.train$DOGE)
+btc.ts.test<-ts(data.test$BTC)
+bnb.ts.test<-ts(data.test$BNB)
+eth.ts.test<-ts(data.test$ETH)
+xrp.ts.test<-ts(data.test$XRP)
+doge.ts.test<-ts(data.test$DOGE)
+#Initialize plot colors
+btc.col<-"#FF8C00"
+bnb.col<-"#008000"
+eth.col<-"#20B2AA"
+xrp.col<-"#1E90FF"
+doge.col<-"#9932CC"
+#Plot each Time Series
+plot(ts(data[,2:6]),  main = "Price")
+plot(data$Date,btc.ts,main="BTC",xlab="Time",ylab="Price",col=btc.col,type = "l")
+plot(data$Date,bnb.ts,main="BNB",xlab="Time",ylab="Price",col=bnb.col,type = "l")
+plot(data$Date,eth.ts,main="ETH",xlab="Time",ylab="Price",col=eth.col,type = "l")
+plot(data$Date,xrp.ts,main="XRP",xlab="Time",ylab="Price",col=xrp.col,type = "l")
+plot(data$Date,doge.ts,main="DOGE",xlab="Time",ylab="Price",col=doge.col,type = "l")
+```
+
+```{r}
+training.month <- lubridate::month(as.Date(data.train$Date, format="%Y-%m-%d"),label=FALSE)
+test.month<- lubridate::month(as.Date(data.test$Date, format="%Y-%m-%d"),label=FALSE)
+training.weekday <- lubridate::wday(data.train$Date, label=FALSE, abbr=FALSE)
+test.weekday <- lubridate::wday(data.test$Date, label=FALSE, abbr=FALSE)
+harmonic.train <- cbind(sin(training.weekday*2*pi/7),cos(training.weekday*2*pi/7),sin(training.month*2*pi/12),cos(training.month*2*pi/12))
+harmonic.test <- cbind(sin(test.weekday*2*pi/7),cos(test.weekday*2*pi/7),sin(test.month*2*pi/12),cos(test.month*2*pi/12))
+mod.btc=Arima(btc.ts.train, order=c(4,0,3), xreg=as.matrix(harmonic.train))
+mod.bnb=Arima(bnb.ts.train, order=c(8,1,8), xreg=as.matrix(harmonic.train))
+mod.eth=Arima(eth.ts.train, order=c(2,1,2), xreg=as.matrix(harmonic.train))
+mod.xrp=Arima(xrp.ts.train, order=c(2,1,2), xreg=as.matrix(harmonic.train))
+mod.doge=Arima(doge.ts.train, order=c(7,1,6), xreg=as.matrix(harmonic.train))
+```
+
+```{r}
+nfore <- length(data.test[,1])
+l <- length(btc.ts)
+fore.btc = predict(mod.btc,n.ahead=14,newxreg=as.matrix(harmonic.test),ci=0.95)
+fore.bnb = predict(mod.bnb,n.ahead=14,newxreg=as.matrix(harmonic.test),ci=0.95)
+fore.eth = predict(mod.eth,n.ahead=14,newxreg=as.matrix(harmonic.test),ci=0.95)
+fore.xrp = predict(mod.xrp,n.ahead=14,newxreg=as.matrix(harmonic.test),ci=0.95)
+fore.doge = predict(mod.doge,n.ahead=14,newxreg=as.matrix(harmonic.test),ci=0.95)
+arma.cnt.btc = fore.btc$pred[1:14]
+arma.cnt.btc.ts = ts(arma.cnt.btc,start=1)
+lo.arma.cnt.btc = ts(arma.cnt.btc-1.96*fore.btc$se,start=1)
+up.arma.cnt.btc = ts(arma.cnt.btc+1.96*fore.btc$se,start=1)
+arma.cnt.bnb = fore.bnb$pred[1:14]
+arma.cnt.bnb.ts = ts(arma.cnt.bnb,start=1)
+lo.arma.cnt.bnb = ts(arma.cnt.bnb-1.96*fore.bnb$se,start=1)
+up.arma.cnt.bnb = ts(arma.cnt.bnb+1.96*fore.bnb$se,start=1)
+arma.cnt.eth = fore.eth$pred[1:14]
+arma.cnt.eth.ts = ts(arma.cnt.eth,start=1)
+lo.arma.cnt.eth = ts(arma.cnt.eth-1.96*fore.eth$se,start=1)
+up.arma.cnt.eth = ts(arma.cnt.eth+1.96*fore.eth$se,start=1)
+arma.cnt.xrp = fore.xrp$pred[1:14]
+arma.cnt.xrp.ts = ts(arma.cnt.xrp,start=1)
+lo.arma.cnt.xrp = ts(arma.cnt.xrp-1.96*fore.xrp$se,start=1)
+up.arma.cnt.xrp = ts(arma.cnt.xrp+1.96*fore.xrp$se,start=1)
+arma.cnt.doge = fore.doge$pred[1:14]
+arma.cnt.doge.ts = ts(arma.cnt.doge,start=1)
+lo.arma.cnt.doge = ts(arma.cnt.doge-1.96*fore.doge$se,start=1)
+up.arma.cnt.doge = ts(arma.cnt.doge+1.96*fore.doge$se,start=1)
+```
+```{r}
+layout(mat = matrix(c(1,1,2,2,3,3,
+                      0,4,4,5,5,0), nrow = 2, byrow = TRUE))
+ymin=min(btc.ts.test,arma.cnt.btc.ts,lo.arma.cnt.btc,up.arma.cnt.btc)
+ymax=max(btc.ts.test,arma.cnt.btc.ts,lo.arma.cnt.btc,up.arma.cnt.btc)
+plot(ts(btc.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="BTC ARIMA Predictions")
+points(arma.cnt.btc.ts,lwd=2,col=btc.col)
+lines(lo.arma.cnt.btc,lty=3,lwd= 2, col=btc.col)
+lines(up.arma.cnt.btc,lty=3,lwd= 2, col=btc.col)
+ymin=min(bnb.ts.test,arma.cnt.bnb.ts,lo.arma.cnt.bnb,up.arma.cnt.bnb)
+ymax=max(bnb.ts.test,arma.cnt.bnb.ts,lo.arma.cnt.bnb,up.arma.cnt.bnb)
+plot(ts(bnb.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="BNB ARIMA Predictions")
+points(arma.cnt.bnb.ts,lwd=2,col=bnb.col)
+lines(lo.arma.cnt.bnb,lty=3,lwd= 2, col=bnb.col)
+lines(up.arma.cnt.bnb,lty=3,lwd= 2, col=bnb.col)
+ymin=min(eth.ts.test,arma.cnt.eth.ts,lo.arma.cnt.eth,up.arma.cnt.eth)
+ymax=max(eth.ts.test,arma.cnt.eth.ts,lo.arma.cnt.eth,up.arma.cnt.eth)
+plot(ts(eth.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="ETH ARIMA Predictions")
+points(arma.cnt.eth.ts,lwd=2,col=eth.col)
+lines(lo.arma.cnt.eth,lty=3,lwd= 2, col=eth.col)
+lines(up.arma.cnt.eth,lty=3,lwd= 2, col=eth.col)
+ymin=min(xrp.ts.test,arma.cnt.xrp.ts,lo.arma.cnt.xrp,up.arma.cnt.xrp)
+ymax=max(xrp.ts.test,arma.cnt.xrp.ts,lo.arma.cnt.xrp,up.arma.cnt.xrp)
+plot(ts(xrp.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="XRP ARIMA Predictions")
+points(arma.cnt.xrp.ts,lwd=2,col=xrp.col)
+lines(lo.arma.cnt.xrp,lty=3,lwd= 2, col=xrp.col)
+lines(up.arma.cnt.xrp,lty=3,lwd= 2, col=xrp.col)
+ymin=min(doge.ts.test,arma.cnt.doge.ts,lo.arma.cnt.doge,up.arma.cnt.doge)
+ymax=max(doge.ts.test,arma.cnt.doge.ts,lo.arma.cnt.doge,up.arma.cnt.doge)
+plot(ts(doge.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="DOGE ARIMA Predictions")
+points(arma.cnt.doge.ts,lwd=2,col=doge.col)
+lines(lo.arma.cnt.doge,lty=3,lwd= 2, col=doge.col)
+lines(up.arma.cnt.doge,lty=3,lwd= 2, col=doge.col)
+```
+```{r}
+fore.series.btc = NULL
+fore.se.btc = NULL
+fore.series.bnb = NULL
+fore.se.bnb = NULL
+fore.series.eth = NULL
+fore.se.eth = NULL
+fore.series.xrp = NULL
+fore.se.xrp = NULL
+fore.series.doge = NULL
+fore.se.doge = NULL
+for(f in 1: 14){
+    ## Fit models
+    data.btc = btc.ts.train
+    data.bnb = bnb.ts.train
+    data.eth = eth.ts.train
+    data.xrp = xrp.ts.train
+    data.doge = doge.ts.train
+    xreg.data = harmonic.train
+    if(f>=2){
+       data.btc = c(btc.ts.train,btc.ts.test[1:(f-1)])
+       data.bnb = c(bnb.ts.train,bnb.ts.test[1:(f-1)])
+       data.eth = c(eth.ts.train,eth.ts.test[1:(f-1)])
+       data.xrp = c(xrp.ts.train,xrp.ts.test[1:(f-1)])
+       data.doge = c(doge.ts.train,doge.ts.test[1:(f-1)])
+       xreg.data=rbind(harmonic.train,harmonic.test[1:(f-1),])
+    }
+    mod.btc1=Arima(data.btc, order=c(4,0,3), xreg=xreg.data)
+    mod.bnb1=Arima(data.bnb, order=c(8,1,8), xreg=xreg.data)
+    mod.eth1=Arima(data.eth, order=c(2,1,2), xreg=xreg.data)
+    mod.xrp1=Arima(data.xrp, order=c(2,1,2), xreg=xreg.data)
+    mod.doge1=Arima(data.doge, order=c(7,1,6), xreg=xreg.data)
+    ## Forecast
+    fore.btc = predict(mod.btc1,n.ahead=1,newxreg=matrix(harmonic.test[f,],ncol=4),ci=0.95)
+    fore.series.btc = c(fore.series.btc, fore.btc$pred)
+    fore.se.btc = c(fore.se.btc, fore.btc$se)
+    fore.bnb = predict(mod.bnb1,n.ahead=1,newxreg=matrix(harmonic.test[f,],ncol=4),ci=0.95)
+    fore.series.bnb = c(fore.series.bnb, fore.bnb$pred)
+    fore.se.bnb = c(fore.se.bnb, fore.bnb$se)
+    fore.eth = predict(mod.eth1,n.ahead=1,newxreg=matrix(harmonic.test[f,],ncol=4),ci=0.95)
+    fore.series.eth = c(fore.series.eth, fore.eth$pred)
+    fore.se.eth = c(fore.se.eth, fore.eth$se)
+    fore.xrp = predict(mod.xrp1,n.ahead=1,newxreg=matrix(harmonic.test[f,],ncol=4),ci=0.95)
+    fore.series.xrp = c(fore.series.xrp, fore.xrp$pred)
+    fore.se.xrp = c(fore.se.xrp, fore.xrp$se)
+    fore.doge = predict(mod.doge1,n.ahead=1,newxreg=matrix(harmonic.test[f,],ncol=4),ci=0.95)
+    fore.series.doge = c(fore.series.doge, fore.doge$pred)
+    fore.se.doge = c(fore.se.doge, fore.doge$se)
+}
+```
+```{r}
+layout(mat = matrix(c(1,1,2,2,3,3,
+                      0,4,4,5,5,0), nrow = 2, byrow = TRUE))
+fore.series.btc=ts(fore.series.btc,start=1)
+lbound = ts(fore.series.btc-1.96*fore.se.btc,start=1)
+ubound = ts(fore.series.btc+1.96*fore.se.btc,start=1)
+ymin=min(btc.ts.test,fore.series.btc,lbound,ubound)
+ymax=max(btc.ts.test,fore.series.btc,lbound,ubound)
+plot(ts(btc.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="BTC ARIMA Predictions")
+points(fore.series.btc,lwd=2,col=btc.col)
+lines(lbound,lty=3,lwd= 2, col=btc.col)
+lines(ubound,lty=3,lwd= 2, col=btc.col)
+fore.series.bnb=ts(fore.series.bnb,start=1)
+lbound = ts(fore.series.bnb-1.96*fore.se.bnb,start=1)
+ubound = ts(fore.series.bnb+1.96*fore.se.bnb,start=1)
+ymin=min(bnb.ts.test,fore.series.bnb,lbound,ubound)
+ymax=max(bnb.ts.test,fore.series.bnb,lbound,ubound)
+plot(ts(bnb.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="BNB ARIMA Predictions")
+points(fore.series.bnb,lwd=2,col=bnb.col)
+lines(lbound,lty=3,lwd= 2, col=bnb.col)
+lines(ubound,lty=3,lwd= 2, col=bnb.col)
+fore.series.eth=ts(fore.series.eth,start=1)
+lbound = ts(fore.series.eth-1.96*fore.se.eth,start=1)
+ubound = ts(fore.series.eth+1.96*fore.se.eth,start=1)
+ymin=min(eth.ts.test,fore.series.eth,lbound,ubound)
+ymax=max(eth.ts.test,fore.series.eth,lbound,ubound)
+plot(ts(eth.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="ETH ARIMA Predictions")
+points(fore.series.eth,lwd=2,col=eth.col)
+lines(lbound,lty=3,lwd= 2, col=eth.col)
+lines(ubound,lty=3,lwd= 2, col=eth.col)
+fore.series.xrp=ts(fore.series.xrp,start=1)
+lbound = ts(fore.series.xrp-1.96*fore.se.xrp,start=1)
+ubound = ts(fore.series.xrp+1.96*fore.se.xrp,start=1)
+ymin=min(xrp.ts.test,fore.series.xrp,lbound,ubound)
+ymax=max(xrp.ts.test,fore.series.xrp,lbound,ubound)
+plot(ts(xrp.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="XRP ARIMA Predictions")
+points(fore.series.xrp,lwd=2,col=xrp.col)
+lines(lbound,lty=3,lwd= 2, col=xrp.col)
+lines(ubound,lty=3,lwd= 2, col=xrp.col)
+fore.series.doge=ts(fore.series.doge,start=1)
+lbound = ts(fore.series.doge-1.96*fore.se.doge,start=1)
+ubound = ts(fore.series.doge+1.96*fore.se.doge,start=1)
+ymin=min(doge.ts.test,fore.series.doge,lbound,ubound)
+ymax=max(doge.ts.test,fore.series.doge,lbound,ubound)
+plot(ts(doge.ts.test,start=1), ylim=c(ymin,ymax), ylab="Log Price", type="l",main="DOGE ARIMA Predictions")
+points(fore.series.doge,lwd=2,col=doge.col)
+lines(lbound,lty=3,lwd= 2, col=doge.col)
+lines(ubound,lty=3,lwd= 2, col=doge.col)
+```
+
+
+
